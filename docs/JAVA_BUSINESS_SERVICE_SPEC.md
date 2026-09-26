@@ -289,7 +289,109 @@ mvn spring-boot:run
 - 订单越权测试
 - Java 服务不可用时 Python 的超时和降级测试
 
-## 11. 后续实现顺序
+## 11. 分阶段开发与确认机制
+
+Java Business Service 采用“按业务模块逐步开发、每阶段验收后人工确认”的方式。每个阶段完成后必须向用户汇报并等待明确确认，才能开始下一阶段。
+
+```text
+确认当前阶段目标
+  ↓
+实现当前模块
+  ↓
+编译和测试
+  ↓
+汇报变更和结果
+  ↓
+等待用户确认
+  ↓ 用户确认
+进入下一阶段
+```
+
+建议的 Java 开发阶段：
+
+### Java 阶段 0：项目和契约基础
+
+- 统一根包和启动类
+- 确认 Maven 依赖
+- 编写并编译 `business_service.proto`
+- 启动 gRPC Server
+- 用 Apifox 或 grpcurl 查看服务
+
+完成后暂停，确认 Proto 字段、服务名、端口和包结构。
+
+### Java 阶段 1：订单模块
+
+- `order/domain`
+- `order/mapper`
+- `order/service`
+- `order/service/impl`
+- `OrderGrpcEndpoint`
+- 订单归属校验和订单列表测试
+
+完成后确认订单响应字段和用户归属行为是否满足 Python Tool 对接。
+
+### Java 阶段 2：物流模块
+
+- `logistics/domain`
+- `logistics/mapper`
+- `logistics/service`
+- `logistics/service/impl`
+- `LogisticsGrpcEndpoint`
+- 根据订单返回的 `tracking_no` 查询物流
+
+完成后确认 Python 是否可以实现“先查订单、再查物流”。
+
+### Java 阶段 3：售后模块
+
+- `aftersales/domain`
+- `aftersales/mapper`
+- `aftersales/service`
+- `aftersales/service/impl`
+- `AftersalesGrpcEndpoint`
+- 保修和退货状态测试
+
+完成后确认售后状态和错误码是否冻结。
+
+### Java 阶段 4：退款模块
+
+- `refund/domain`
+- `refund/mapper`
+- `refund/service`
+- `refund/service/impl`
+- `RefundGrpcEndpoint`
+- `ValidateRefund`
+- `SubmitRefund`
+- 幂等测试和非法状态测试
+
+完成后确认 Python 的 interrupt/resume 是否可以开始接入。
+
+### Java 阶段 5：工单模块
+
+- `ticket/domain`
+- `ticket/mapper`
+- `ticket/service`
+- `ticket/service/impl`
+- `TicketGrpcEndpoint`
+- 工单参数校验和幂等测试
+
+完成后确认工单字段、会话关联和后续持久化方向。
+
+### Java 阶段 6：Python 联调
+
+- Python 生成同一份 Proto 的 Stub
+- 逐个联调订单、物流、售后、退款、工单
+- 完成 Apifox、grpcurl 和 Python Tool 三类测试
+
+完成后确认是否保留 HTTP 调试接口、是否删除旧 MCP 路径、是否进入真实数据库设计。
+
+协作规则：
+
+- 用户说“继续”时，先确认当前停在哪个阶段。
+- 当前阶段测试未通过时，不进入下一阶段。
+- 用户只问问题或要求解释时，不视为阶段确认。
+- 删除 MCP、替换 Mock、接入真实数据库都需要单独确认。
+
+## 12. 后续实现顺序
 
 1. 稳定本文件和 `business_service.proto`，不要先改 Python 工具。
 2. 为每个业务模块补充 `api/dto/vo`，让 HTTP 调试协议与领域对象分离。
@@ -298,7 +400,7 @@ mvn spring-boot:run
 5. Python 生成同一份 proto 的 stub，先联调 `QueryOrder`。
 6. 依次联调物流、售后、退款和工单。
 
-## 12. 当前明确限制
+## 13. 当前明确限制
 
 - 业务数据全部是 Mock，没有真实订单、物流、退款数据库。
 - 工单、退款幂等数据只保存在 Java 进程内存中。
