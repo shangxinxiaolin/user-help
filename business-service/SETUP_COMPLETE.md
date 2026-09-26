@@ -222,7 +222,7 @@ dir /s /b src
 | 文档 | 位置 | 说明 |
 |------|------|------|
 | **项目总览** | ../README.md | 整体项目介绍 |
-| **Java 规格书** | ../docs/JAVA_BUSINESS_SERVICE_SPEC.md | 1513行详细设计 |
+| **Java 规格书** | business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md | Java 服务详细设计 |
 | **Java 项目说明** | business-service/README.md | Java 项目使用指南 |
 | **依赖清单** | business-service/DEPENDENCY_CHECKLIST.md | 依赖完成情况 |
 | **原规格书** | ../docs/SPEC.md | 微服务拆分方案 |

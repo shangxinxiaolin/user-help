@@ -34,8 +34,6 @@ lingxi-customer-service/
 │
 ├── docs/
 │   ├── SPEC.md                       # 总体拆分规格
-│   ├── JAVA_BUSINESS_SERVICE_SPEC.md # Java 服务规格
-│   ├── PYTHON_AGENT_SERVICE_SPEC.md  # Python Agent 服务规格
 │   └── architecture/                # 架构图
 │
 └── README.md
@@ -243,8 +241,8 @@ mvn test
 ## 文档
 
 - [总体拆分规格](docs/SPEC.md)
-- [Java Business Service 规格](docs/JAVA_BUSINESS_SERVICE_SPEC.md)
-- [Python Agent Service 规格](docs/PYTHON_AGENT_SERVICE_SPEC.md)
+- [Java Business Service 规格](business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md)
+- [Python Agent Service 规格](agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md)
 - [Java 服务说明](business-service/README.md)
 - [Protobuf 接口定义](business-service/src/main/proto/business_service.proto)
 - [Python Agent Service 当前状态](agent-service/README.md)

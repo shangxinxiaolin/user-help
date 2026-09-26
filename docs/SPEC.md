@@ -1,7 +1,9 @@
 # MewHelp 微服务拆分规格书
 
 > 本文档描述整体拆分方向。Java 业务服务的可执行细节以同目录的
-> `JAVA_BUSINESS_SERVICE_SPEC.md` 和 `business-service/src/main/proto/business_service.proto` 为准。
+> Java 细节以 `business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md` 和
+> `business-service/src/main/proto/business_service.proto` 为准；Python 细节以
+> `agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md` 为准。
 
 ## 文档目的
 

@@ -265,7 +265,7 @@ A: 检查 `application.yml` 中的数据库配置，确保 MySQL 服务已启动
 
 ## 相关文档
 
-- [Java 规格书](../docs/JAVA_BUSINESS_SERVICE_SPEC.md)
+- [Java 规格书](docs/JAVA_BUSINESS_SERVICE_SPEC.md)
 - [项目总览](../README.md)
 - [Protobuf 定义](../proto/business_service.proto)
 
