@@ -6,6 +6,8 @@
 
 该目录已经纳入项目，但 Python 原项目尚未迁移进来。当前仓库优先完成 Java Business Service，并稳定 Python 与 Java 之间的 Protobuf 契约。
 
+详细设计见：[Python Agent Service 规格书](../docs/PYTHON_AGENT_SERVICE_SPEC.md)。
+
 ## 计划结构
 
 ```text
