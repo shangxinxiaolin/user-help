@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: business-service
+
+# gRPC Server 配置
+grpc:
+  server:
+    port: 9090
+    max-inbound-message-size: 4MB
+    enable-reflection: true  # 启用 gRPC 反射（用于 grpcurl 测试）
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.shangui.userhelp: DEBUG
+    io.grpc: WARN
+    org.springframework: INFO
+    org.mybatis: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:MM:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:MM:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/business-service.log
+    max-size: 10MB
+    max-history: 30
+
+# Spring Boot Actuator 配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+
+# 应用配置
+app:
+  mock:
+    enabled: true  # 是否启用 Mock 数据（开发阶段为 true）

@@ -1,0 +1,183 @@
+syntax = "proto3";
+
+package mewhelp.business;
+
+option java_multiple_files = true;
+option java_package = "com.shangui.userhelp.rpc";
+option java_outer_classname = "BusinessServiceProto";
+
+message RequestContext {
+  string user_id = 1;
+  string conversation_id = 2;
+  string trace_id = 3;
+}
+
+message ErrorResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+}
+
+message OrderSnapshot {
+  string order_id = 1;
+  string status = 2;
+  int32 amount = 3;
+  string created_at = 4;
+  string product = 5;
+  string tracking_no = 6;
+}
+
+message OrderBrief {
+  string order_id = 1;
+  string product = 2;
+  string status = 3;
+  int32 amount = 4;
+}
+
+message QueryOrderRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+}
+
+message QueryOrderResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  OrderSnapshot order = 4;
+}
+
+message ListUserOrdersRequest {
+  RequestContext context = 1;
+}
+
+message ListUserOrdersResponse {
+  bool success = 1;
+  string error_code = 2;
+  repeated OrderBrief orders = 3;
+}
+
+message QueryLogisticsRequest {
+  RequestContext context = 1;
+  string tracking_no = 2;
+}
+
+message LogisticsInfo {
+  string tracking_no = 1;
+  string status = 2;
+  string current_city = 3;
+  repeated string trace = 4;
+}
+
+message QueryLogisticsResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  LogisticsInfo info = 4;
+}
+
+message QueryWarrantyRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+}
+
+message WarrantyInfo {
+  string order_id = 1;
+  string warranty_status = 2;
+  string warranty_until = 3;
+}
+
+message QueryWarrantyResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  WarrantyInfo info = 4;
+}
+
+message QueryReturnStatusRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+}
+
+message ReturnInfo {
+  string order_id = 1;
+  string return_status = 2;
+  string updated_at = 3;
+}
+
+message QueryReturnStatusResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  ReturnInfo info = 4;
+}
+
+message ValidateRefundRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+}
+
+message ValidateRefundResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  bool refundable = 4;
+  string reason = 5;
+}
+
+message SubmitRefundRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string reason = 3;
+  string idempotency_key = 4;
+}
+
+message SubmitRefundResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  string refund_id = 4;
+}
+
+message CreateTicketRequest {
+  RequestContext context = 1;
+  string description = 2;
+  string ticket_type = 3;
+  string idempotency_key = 4;
+}
+
+message CreateTicketResponse {
+  bool success = 1;
+  string error_code = 2;
+  string message = 3;
+  string ticket_no = 4;
+}
+
+service OrderService {
+  rpc QueryOrder(QueryOrderRequest)
+      returns (QueryOrderResponse);
+
+  rpc ListUserOrders(ListUserOrdersRequest)
+      returns (ListUserOrdersResponse);
+}
+
+service LogisticsService {
+  rpc QueryLogistics(QueryLogisticsRequest)
+      returns (QueryLogisticsResponse);
+}
+
+service AftersalesService {
+  rpc QueryWarranty(QueryWarrantyRequest)
+      returns (QueryWarrantyResponse);
+
+  rpc QueryReturnStatus(QueryReturnStatusRequest)
+      returns (QueryReturnStatusResponse);
+}
+
+service RefundService {
+  rpc ValidateRefund(ValidateRefundRequest) returns (ValidateRefundResponse);
+  rpc SubmitRefund(SubmitRefundRequest) returns (SubmitRefundResponse);
+}
+
+service TicketService {
+  rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
+}
