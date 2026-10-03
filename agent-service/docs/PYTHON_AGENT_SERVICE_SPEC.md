@@ -14,13 +14,13 @@
 D:\智能客服\MEWHELP python
 ```
 
-目标迁移目录为：
+目标重新实现目录为：
 
 ```text
 D:\mewhelp-user-help\agent-service
 ```
 
-当前 `agent-service/` 仅包含占位说明，原 Python 项目尚未迁移。本文档是后续迁移和联调的依据，不代表 Python 服务当前已经完成。
+当前 `agent-service/` 已完成基础对话、Graph 消息状态和会话/消息仓储，完整工作流、SSE、知识库及 Java gRPC 联调仍在后续阶段。原项目代码不直接复制；以原项目的模块职责、工作流和验收行为为参考逐步重新实现。
 
 ## 2. 服务定位
 
@@ -70,7 +70,7 @@ Java Business Service
   └─ 工单
 ```
 
-## 3. 原项目现状
+## 3. 原项目参考基线
 
 原项目使用 Python 3.12+，主要依赖如下：
 
@@ -85,7 +85,7 @@ Java Business Service
 | 可观测性 | Langfuse |
 | Checkpoint | LangGraph SQLite Checkpointer |
 
-原项目主要目录：
+原项目主要目录，作为新项目的能力参考：
 
 ```text
 MEWHELP python/
@@ -105,9 +105,9 @@ MEWHELP python/
 └── tests/            # 单元测试和验收测试
 ```
 
-## 4. 目标目录结构
+## 4. 新项目目标目录结构
 
-迁移到当前仓库后，保留原项目按能力划分的结构，并增加 gRPC Client：
+新项目按原项目的能力划分重新实现，并增加 gRPC Client。目录结构保留原有职责，但代码不直接复制：
 
 ```text
 agent-service/
@@ -136,7 +136,14 @@ agent-service/
 │   │   └── base.py
 │   ├── graph/
 │   │   ├── state.py             # ConversationState
-│   │   ├── nodes.py             # 工作流节点
+│   │   ├── answer.py            # 最终回答解析
+│   │   ├── nodes/
+│   │   │   ├── chat.py          # 基础聊天节点
+│   │   │   ├── intent.py        # 指代消解、意图分类
+│   │   │   ├── knowledge.py     # 检索、置信度闸
+│   │   │   ├── business.py      # 订单、物流等编排
+│   │   │   ├── refund.py        # 退款子流程
+│   │   │   └── tools.py         # 工具执行节点
 │   │   ├── routing.py           # 条件路由
 │   │   ├── build.py             # 构建图
 │   │   └── runtime.py           # run_turn/stream_turn
@@ -167,10 +174,13 @@ agent-service/
 ├── proto/
 │   └── business_service.proto    # 从 Java 服务同步的契约副本
 ├── tests/
-│   ├── unit/
+│   ├── api/
+│   ├── core/
 │   ├── graph/
+│   ├── schemas/
 │   ├── grpc/
-│   └── integration/
+│   ├── integration/
+│   └── fakes.py                  # 统一测试模型和替身
 ├── pyproject.toml
 ├── .env.example
 └── README.md
@@ -312,7 +322,7 @@ message RequestContext {
 
 | 字段 | 来源 | 是否可信 |
 |---|---|---|
-| `user_id` | FastAPI 认证上下文或当前开发阶段的用户 Header | 必须由系统注入，不能由模型填写 |
+| `user_id` | 目标：FastAPI 校验 JWT/Session 后的身份；目前仅由本地调试请求提供 | 当前未认证，不可信；目标阶段由系统注入，不能由模型填写 |
 | `conversation_id` | LangGraph 会话 ID | 由 Agent 状态注入 |
 | `trace_id` | 请求入口生成或透传 | 由系统生成或透传 |
 
@@ -492,6 +502,48 @@ Tool 层不应该：
 - 吞掉 gRPC 超时和服务不可用异常。
 
 ## 11. 错误处理
+
+### 11.0 公网接口边界与模型额度保护
+
+**当前状态**：本地 FastAPI 尚未实现 JWT、限流和 Token 配额；请求里的 `user_id` 可由调用方自报，只能用于本地调试。当前 `/api/chat` 还是非流式 JSON，尚未迁至本节描述的 SSE 目标形态。不得将此实现直接暴露公网。
+
+**对外部署目标**：
+
+| 接口 | 访问范围 | 调用模型前必须完成的检查 |
+|---|---|---|
+| `POST /api/chat` | 已认证的前端用户 | 身份、会话归属、请求大小、用户频率/并发、剩余额度 |
+| `POST /api/agent` | 内网或管理员 | 服务/管理员身份、会话归属、额度；网关不转发普通公网流量 |
+| `POST /api/actions/resume` | 已认证的原会话用户 | 身份与会话归属、幂等与并发控制 |
+| 管理/知识审核接口 | 管理员 | 管理员身份和操作权限 |
+| `GET /health` | 运维或网关 | 不调用模型，不暴露密钥/内部状态 |
+
+目标请求 Body 只包含消息及可选 `conversation_id`；不能从 Body 或未经校验的 `X-User-Id` 取得可信用户身份。FastAPI 验证 JWT/Session 后注入 `ConversationState.user_id`，并在继续旧会话或 resume 前核查 `conversations.user_id`。当前 Pydantic Schema 允许 `user_id` 是开发阶段临时契约；切换时同步更新 Schema、API 测试和客户端。
+
+所有入口的模型预算检查必须发生在 Graph/LLM 调用之前：
+
+1. 边缘层（网关/反向代理）限制 IP 频率、请求体大小与 TLS；Python 再实施用户级限流，不能只靠 IP。
+2. 对消息长度、模型输入上下文和单次最大输出 Token 分别设上限；`max_agent_steps` 限制 ReAct 循环，工具/模型请求均设 deadline。
+3. 对每用户的时间窗请求数、活跃 SSE 连接、并发 LLM 调用、每日 Token/费用预算，以及全局并发设置**可配置**上限。多实例时通过共享存储原子占额和释放，不能用各进程独立内存计数宣称全局生效。
+4. 发起模型请求前预留预算；根据模型实际返回的 usage（含失败/取消时可获取的用量）结算。取消不保证上游不计费，应做账务对账；异常与客户端断开时释放并发槽位。
+5. 客户端断开 SSE 时取消本地 Graph/LLM 任务、避免继续生成；给 SSE 空闲和整体生命周期设置上限。模型 429/5xx 不可无限重试，以免放大成本。
+
+认证或配额失败发生在响应头发送**之前**时使用 HTTP 401（未认证）、403/404（无权/会话归属）、413（Body 过大）、422（参数错误）、429（频率/并发/额度）；模型/后端不可用按 502/503/504 处理。SSE 响应开始后不能再改 HTTP 状态码，必须发送 `error` 事件并结束流。不要将完整 Prompt、密钥或隐私内容写入限流日志。
+
+建议配置键（均为待实现项，数值应通过预算和负载测试确定，而非当前承诺）：
+
+```env
+CHAT_REQUEST_TIMEOUT_SECONDS=<按上游实测确定>
+CHAT_MAX_INPUT_CHARS=<按业务确定>
+CHAT_MAX_OUTPUT_TOKENS=<按成本确定>
+MAX_AGENT_STEPS=<按工作流确定>
+USER_REQUESTS_PER_MINUTE=<按套餐确定>
+USER_MAX_CONCURRENT_CHATS=<按容量确定>
+GLOBAL_MAX_CONCURRENT_LLM_CALLS=<按容量确定>
+USER_DAILY_TOKEN_QUOTA=<按预算确定>
+REDIS_URL=<多实例共享计数时配置>
+```
+
+建议阶段顺序：先完成可信身份和会话归属、输入/输出预算、LLM/Graph 超时及单实例并发控制；公网发布前补齐共享限流和额度结算、边缘入口保护、SSE 取消处理及对应验收。以上措施都尚未实现。
 
 ### 11.1 业务响应错误
 
@@ -722,25 +774,56 @@ Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 
 如果用户只提出问题、要求解释或要求修改当前阶段，仍然停留在当前阶段，不视为进入下一阶段。
 
-### 阶段 0：迁移原项目
+### 阶段 0：创建新项目骨架
 
 **阶段闸门：完成后必须与用户确认。**
 
-- [ ] 将原 `app/`、`data/`、`sql/`、`scripts/`、`tests/` 迁移到 `agent-service/`
-- [ ] 保留原测试套件
-- [ ] 在纯英文路径安装并运行原 Python 项目
-- [ ] 确认 `/api/chat` 和 `/api/agent` 可用
+- [ ] 创建 `app/api`、`app/core`、`app/graph`、`app/tools`、`app/kb`、`app/db`、`app/schemas`
+- [ ] 创建新的 `pyproject.toml` 和 `.env.example`
+- [ ] 创建 FastAPI 应用和 `/health` 接口
+- [ ] 创建 LangGraph 的 State、节点和构图骨架
+- [ ] 创建最小 `/api/chat` 接口
+- [ ] 不直接复制原项目代码
 
-本阶段不改造业务工具，不接入 Java gRPC。目标是先证明原 Python Agent 可以在新目录独立运行。
+本阶段不接入 Java gRPC，不调用真实 LLM，不实现完整业务工具。目标是先建立新项目的运行骨架，并让你理解 FastAPI、Pydantic 和 LangGraph 的基本结构。
 
 完成后需要与用户确认：
 
-1. 原 Python 服务是否可以启动。
-2. `/api/chat` 和 `/api/agent` 是否保持原行为。
-3. 是否接受迁移后的目录结构。
+1. 新 Python 服务是否可以启动。
+2. `/health` 和最小 `/api/chat` 是否可用。
+3. 是否接受按原项目职责重新划分的目录结构。
 4. 是否允许进入阶段 1。
 
-### 阶段 1：接入 gRPC 基础设施
+本阶段的教学顺序：
+
+1. 先解释 `pyproject.toml`、虚拟环境和依赖安装。
+2. 再创建 FastAPI `main.py` 和 `/health`。
+3. 再创建 Pydantic 请求/响应模型。
+4. 再创建 LangGraph 的 State、Node 和 Graph。
+5. 最后把最小 Graph 接入 `/api/chat`。
+
+每完成一个小步骤都可以运行一次测试和启动检查；如果用户提出疑问，停留在当前小步骤解释清楚，不自动跳过。
+
+### 阶段 1：复刻基础 Agent 对话能力
+
+**阶段闸门：完成后必须与用户确认。**
+
+- [ ] 实现基础 Prompt 和 LLM 客户端抽象
+- [ ] 实现 LangGraph 的消息状态
+- [ ] 实现普通对话节点
+- [ ] 实现 `/api/chat` 的流式响应
+- [ ] 为节点和 API 添加单元测试
+
+本阶段先复刻原项目的基础 Agent 对话能力，不接业务 RPC。这样可以先理解 Agent 的状态、节点和流式输出。
+
+完成后需要与用户确认：
+
+1. 新 Agent 是否能完成一轮普通对话。
+2. LangGraph 状态和节点职责是否清晰。
+3. 流式输出和测试是否符合预期。
+4. 是否允许进入阶段 2。
+
+### 阶段 2：接入 gRPC 基础设施并实现订单工具
 
 **阶段闸门：完成后必须与用户确认。**
 
@@ -749,97 +832,98 @@ Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 - [ ] 生成 Python Stub
 - [ ] 创建 Channel 生命周期管理
 - [ ] 添加 Java 服务地址和超时配置
-- [ ] 用独立脚本调用 `QueryOrder`
+- [ ] 实现 `OrderClient`
+- [ ] 实现新的 `query_order` Tool
+- [ ] 将订单 Tool 接入 LangGraph
 
-本阶段只建立通信基础设施，不修改 LangGraph 路由和现有 Tool 行为。
-
-完成后需要与用户确认：
-
-1. Python 是否能生成与 Java 一致的 Stub。
-2. Python 是否能独立调用 Java `QueryOrder`。
-3. 超时、错误和 `RequestContext` 设计是否符合预期。
-4. 是否允许进入阶段 2。
-
-### 阶段 2：迁移只读工具
-
-**阶段闸门：完成后必须与用户确认。**
-
-- [ ] 改造 `query_order`
-- [ ] 改造 `query_logistics`
-- [ ] 改造 `query_warranty`
-- [ ] 改造 `query_return_status`
-- [ ] 保留 MCP 作为临时回滚路径
-
-建议本阶段按单个工具逐步实施，顺序为：
+本阶段只实现订单调用，顺序为：
 
 ```text
-query_order
+生成 Stub
   ↓ 用户确认
-query_logistics
+QueryOrder RPC Client
   ↓ 用户确认
-query_warranty / query_return_status
+query_order Tool
+  ↓ 用户确认
+接入 Agent 工作流
 ```
 
 每完成一个工具，都应单独测试后与用户确认；不能一次性跳过中间确认。
 
 完成本阶段后需要与用户确认：
 
-1. 订单、物流和售后工具返回格式是否满足 Agent Prompt 使用。
-2. 现有对话流程是否没有回归。
-3. MCP 回滚路径是否保留到满意为止。
+1. Python 是否能独立调用 Java `QueryOrder`。
+2. 订单 Tool 返回格式是否满足 Agent Prompt 使用。
+3. 订单归属错误是否能正确返回。
 4. 是否允许进入阶段 3。
 
-### 阶段 3：迁移写工具
+### 阶段 3：实现物流和售后只读工具
 
 **阶段闸门：完成后必须与用户确认。**
 
-- [ ] 接入 `ValidateRefund`
-- [ ] 接入 `SubmitRefund`
-- [ ] 保留 interrupt/resume
-- [ ] 接入 `CreateTicket`
-- [ ] 所有写操作使用幂等键
-- [ ] 完成重复提交测试
+- [ ] 实现 `LogisticsClient`
+- [ ] 实现 `query_logistics`
+- [ ] 实现 `AftersalesClient`
+- [ ] 实现 `query_warranty`
+- [ ] 实现 `query_return_status`
+- [ ] 将只读工具接入 Agent 工作流
 
-写操作必须拆成两个子阶段，每个子阶段完成后都要确认：
+每完成一个工具，都要单独测试并等待确认：
 
 ```text
-3A：退款 ValidateRefund + SubmitRefund
+物流 QueryLogistics
   ↓ 用户确认
-3B：工单 CreateTicket
+售后 QueryWarranty / QueryReturnStatus
 ```
 
-本阶段不得因为测试方便而绕过 `interrupt/resume` 用户确认流程。
+完成后确认订单→物流链路和售后查询是否符合预期。
 
-完成 3A 后需要与用户确认：
-
-1. 退款确认卡片和恢复流程是否符合预期。
-2. 重复提交是否保持幂等。
-3. 是否允许接入工单创建。
-
-完成 3B 后需要与用户确认：
-
-1. 工单预览和确认流程是否符合预期。
-2. 工单号和会话状态更新是否正确。
-3. 是否允许进入阶段 4。
-
-### 阶段 4：清理和联调
+### 阶段 4：实现退款确认流程
 
 **阶段闸门：完成后必须与用户确认。**
 
-- [ ] 删除业务工具对 MCP 的依赖
-- [ ] 保留 `query_faq` 本地知识检索
-- [ ] 完成订单物流端到端测试
-- [ ] 完成退款确认端到端测试
-- [ ] 完成工单创建端到端测试
-- [ ] 更新 Agent README 和启动脚本
-
-只有用户确认阶段 3 完成后，才允许删除或停用原 MCP 业务路径。
+- [ ] 实现 `ValidateRefund`
+- [ ] 实现 `SubmitRefund`
+- [ ] 保留 interrupt/resume
+- [ ] 生成幂等键
+- [ ] 完成重复提交和非法状态测试
 
 完成后需要与用户确认：
 
-1. 是否删除 MCP Server，还是保留为回滚方案。
-2. 是否接受当前的启动方式和配置。
-3. 是否进入最终验收或继续优化。
+1. 退款确认卡片和恢复流程是否符合预期。
+2. 重复提交是否保持幂等。
+3. 是否允许进入阶段 5。
+
+### 阶段 5：实现工单流程
+
+- [ ] 实现 `CreateTicket`
+- [ ] 实现工单预览和 interrupt/resume
+- [ ] 接入会话状态更新
+- [ ] 完成工单幂等测试
+
+完成后确认是否进入阶段 6。
+
+### 阶段 6：清理和端到端联调
+
+- [ ] 完成订单、物流、售后、退款、工单端到端测试
+- [ ] 保留 `query_faq` 本地知识检索
+- [ ] 决定是否删除或保留原 MCP Server
+- [ ] 更新 README 和启动脚本
+- [ ] 记录所有已知限制
+
+只有用户确认阶段 5 完成后，才允许删除或停用旧 MCP 业务路径。
+
+### 阶段 7：公网接入与模型费用防护（需单独确认）
+
+- [ ] 实现 JWT/Session 身份提取与会话归属校验，移除 Body 中可自报的 `user_id`。
+- [ ] 对普通用户关闭 `/api/agent` 与管理接口的公网路由。
+- [ ] 配置消息/请求体长度、模型输出 Token、单次超时和最大 Agent 步数。
+- [ ] 增加用户频率、用户/全局并发、活跃 SSE 连接及每日 Token 配额；多实例采用共享的原子计数。
+- [ ] 在开始调用模型前预占预算，并根据实际 usage 结算；对客户端断开、超时及失败做释放和对账。
+- [ ] 接入网关/反向代理的 TLS、IP 限流与路径白名单；与 Java 服务完成服务间认证。
+- [ ] 运行本文件“对外部署前安全验收”的所有测试。
+
+阶段 6 只验收本地功能，不能代替阶段 7 的公网发布验收。进入阶段 7 和对公网开放必须分别得到用户确认。
 
 ## 16.1 开发协作规则
 
@@ -867,6 +951,15 @@ query_warranty / query_return_status
 - RPC 超时不会无限阻塞 SSE 连接。
 - Tool Audit Log 记录工具名、RPC 方法、耗时、错误码和重试次数。
 
+### 对外部署前安全验收（待实现）
+
+- 未认证请求在模型调用前返回 401；修改 Body 中的 `user_id` 无法冒充他人。
+- 访问、续跑他人的 `conversation_id` 被拒绝，且不进入 Graph。
+- 超长请求在模型调用前被拒绝，配额、频率或并发超限返回 429，模型调用次数保持不变。
+- `/api/agent` 无法作为普通公网接口调用；管理路径需要管理员权限。
+- SSE 断开、超时和模型故障均释放并发槽位；断开后不继续本地生成任务，实际用量仍入账。
+- 多实例并发或额度使用共享原子计数验证，不依赖单机计数结果。
+
 ### 性能和稳定性
 
 - 普通业务 RPC 默认超时不超过 3 秒。
@@ -876,8 +969,9 @@ query_warranty / query_return_status
 
 ## 18. 当前限制
 
-- Python Agent Service 尚未迁移到当前仓库。
+- Python Agent Service 正按原项目能力重新实现；当前已具备基础聊天、ORM 与仓储，但完整路由、RAG、工具和 SSE 尚未完成。
 - 当前 Java 业务服务使用 Mock 数据。
 - Java 的退款和工单幂等记录暂存在内存中。
 - 当前未接入 JWT、mTLS、服务发现和网关。
+- 当前没有用户限流、并发/Token 配额、请求长度或 SSE 断连取消保护；不得直接公网开放。
 - 生成的 gRPC Python 文件必须从 Java 侧契约重新生成，不能手工复制后修改。

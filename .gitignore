@@ -1,0 +1,28 @@
+# Local configuration and credentials (at any depth)
+.env
+.env.*
+!.env.example
+secrets.yml
+secrets.yaml
+secrets.json
+credentials.json
+service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Local runtimes and generated data
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+target/
+logs/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*

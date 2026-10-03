@@ -1,0 +1,15 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: lingxi-agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在仓库根目录的 .env 中设置 MYSQL_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./agent-service/sql/001_agent_core.sql:/docker-entrypoint-initdb.d/001_agent_core.sql:ro
+
+volumes:
+  mysql_data:

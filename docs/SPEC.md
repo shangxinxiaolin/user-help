@@ -1076,33 +1076,37 @@ Agent Service
 
 **原则**：`user_id` 必须从可信上下文注入，不能由模型填写。
 
-当前流程：
+当前本地开发状态（不是可信身份验证）：
 
 ```text
 前端请求
-  ├─ user_id: "u1" (从会话或 JWT 中提取)
+  ├─ user_id: "u1" (目前由请求提供，仅供本地开发)
   ↓
 Agent Service
   ├─ 保存在 ConversationState
   ├─ 传递给 Business Service
 ```
 
-拆分后：
+对外部署目标：
 
 ```text
-API Gateway
-  ├─ 从 JWT 或 Session 提取 user_id
-  ├─ 注入到请求头或 gRPC metadata
+API Gateway / 反向代理
+  ├─ TLS、IP 限流与请求体大小限制
+  ├─ 仅转发允许对外开放的路由
   ↓
 Agent Service
-  ├─ 从请求头读取 user_id
+  ├─ 校验 JWT/Session 并提取 user_id，不信任请求 Body/Header 自报的身份
+  ├─ 校验 conversation_id 属于当前用户
+  ├─ 用户请求频率、并发及模型 Token 配额检查（调用模型之前）
   ├─ 保存在 State
-  ├─ 调用 Business Service 时传递
+  ├─ 调用 Business Service 时传递身份和 trace-id
   ↓
 Business Service
-  ├─ 从 gRPC metadata 读取 user_id
-  ├─ 校验并执行业务逻辑
+  ├─ 校验调用方是 Agent Service
+  ├─ 使用可信身份执行业务归属、退款规则与幂等校验
 ```
+
+现有 Protobuf 的 `RequestContext.user_id` 是开发阶段的传递格式，不等于认证；Java 当前 gRPC/HTTP 调试接口也未实现服务身份认证。未来改用可信 metadata 或透传并验证用户令牌时，先制定兼容的接口迁移方案，不把未实现的 metadata 校验描述为现状。
 
 ### 7.2 订单归属校验
 
@@ -1152,6 +1156,23 @@ public class OrderService {
 2. Business Service 必须再次校验权限
 3. 使用幂等键防止重复操作
 4. 记录审计日志
+
+### 7.4 公网接入与模型费用保护
+
+当前只在本地调试，`/api/chat` 与 `/api/agent` 尚未接入认证或配额；不能把当前 FastAPI 或 Java 调试端口直接暴露公网。部署前必须先完成下列边界：
+
+| 边界 | 责任 | 拒绝时机 |
+|---|---|---|
+| 网关/反向代理 | TLS、IP 限流、Body 上限；只放行公开路径 | 转发到 Agent 前 |
+| Python Agent | JWT/Session 认证、会话归属、用户限流/并发/日 Token 配额、输入和输出预算、LLM 超时、最大 ReAct 步数 | Graph/LLM 执行前及运行中 |
+| Java Business | 限制公网可达性、服务间认证、订单归属及业务规则、退款/工单幂等 | 业务读写前 |
+
+- `/api/chat`：经认证和配额检查后才对前端开放；限制单用户活跃 SSE 连接和全局模型并发。客户端断开时尽力取消正在进行的 Graph/LLM 任务，记录取消与实际用量，不能把取消视为已退回上游 Token。
+- `/api/agent`：包含完整 Agent 信息，目标为内部/管理员接口，不经公网普通用户路由。
+- `/api/actions/resume`：必须复核认证用户与会话归属；用户确认不能替代 Java 的最终业务校验。
+- 配额采用用户级持久/共享计数及原子占额（多实例时可用 Redis）；发起调用前检查，拿到实际 usage 后结算。并发槽位必须在正常完成、失败与取消时释放。限流时返回 429，且不启动模型调用。
+- SSE 头部发送后不能再更改 HTTP 状态码：流中出错发送 `error` 事件并终止；在发送头部前完成认证/配额检查，可返回 401/403/413/422/429 等状态码。
+- 具体阈值应在配置和压测后确定，不能以示例数字冒充已验证的容量承诺；网关、认证和配额均列为公网发布前置条件，而非现有功能。
 
 ---
 
@@ -1305,21 +1326,22 @@ Java Business Service 内部继续拆成订单、物流、售后、退款、工�
 - 退款幂等性测试通过
 - 工单创建测试通过
 
-#### 阶段 2：Agent Service 适配（1-2 周）
+#### 阶段 2：按原能力重新实现 Agent Service（分阶段）
 
-**目标**：将 Agent Service 中的业务调用改为 gRPC 调用。
+**目标**：参考原 Python 项目的模块职责和业务流程，在新 `agent-service` 中重新实现 Agent；业务工具最终通过 gRPC 调用 Java Business Service，不直接复制原项目代码。
 
 任务：
 
-- [ ] 实现 gRPC Client（Python）
-- [ ] 改造 `app/tools/engine.py` 为 RPC 适配层
-- [ ] 修改 `app/tools/builtin/orders.py` 为 RPC 调用
-- [ ] 修改 `app/tools/builtin/refunds.py` 为 RPC 调用
-- [ ] 修改 `app/tools/builtin/tickets.py` 为 RPC 调用
-- [ ] 移除 MCP Server 进程（功能已迁移到 Java）
-- [ ] 保留工具注册表和执行引擎框架
+- [ ] 创建新的 Python Agent Service 骨架
+- [ ] 重新实现基础 FastAPI 和 LangGraph 对话流程
+- [ ] 实现 Python gRPC Client
+- [ ] 重新实现订单 Tool，并调用 Java RPC
+- [ ] 重新实现物流和售后只读 Tool
+- [ ] 重新实现退款确认流程
+- [ ] 重新实现工单确认流程
+- [ ] 在用户确认前保留原 MCP 设计作为参考，不直接删除
 
-Python 适配顺序固定为：gRPC 基础设施 → 订单 → 物流/售后只读工具 → 退款 → 工单。每一项完成后都必须与用户确认再进入下一项。
+Python 重实现顺序固定为：项目骨架 → 基础 Agent → gRPC 基础设施 → 订单 → 物流/售后只读工具 → 退款 → 工单。每一项完成后都必须与用户确认再进入下一项。
 
 验收：
 
@@ -1423,6 +1445,12 @@ Python 适配顺序固定为：gRPC 基础设施 → 订单 → 物流/售后只
 | 退款幂等性 | 重复提交同一退款请求，只创建一次退款单 |
 | 工单幂等性 | 重复提交同一工单请求，只创建一次工单 |
 | 用户身份伪造 | 尝试修改 `user_id`，必须被拒绝 |
+| 模型请求频率/配额 | 超限时在调用模型前返回 429；后端模型调用计数不增加 |
+| 会话归属和恢复 | 使用他人的 `conversation_id` 或 resume 请求必须被拒绝 |
+| 公网路径 | `/api/agent`、管理接口与 Java gRPC/调试接口不得向普通公网用户开放 |
+| SSE 断线 | 断线后取消本地生成任务、释放并发占位；记录可获得的上游用量，无法获得时标记待对账 |
+
+本节新增的公网防护均为**部署前目标**，当前本地项目尚未实现，不能将验收表描述为已通过。
 
 ### 10.4 可观测性验收
 

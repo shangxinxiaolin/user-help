@@ -4,7 +4,7 @@
 
 灵犀客服计划将 AI Agent 与业务服务拆分：Python 负责对话理解、LangGraph 编排和工具调用；Java 负责订单、物流、售后、退款和工单等业务能力。
 
-当前阶段优先完成 Java Business Service，并使用稳定的 Mock 数据跑通业务接口。Python Agent Service 目录已预留，尚未迁移原 Python 项目。
+Java Business Service 已提供 Mock 业务接口。Python Agent Service 正参考原项目逐步重新实现，目前已完成基础对话、会话/消息 ORM 与仓储；业务工具与 Java gRPC 尚未联调。
 
 ## 项目结构
 
@@ -29,8 +29,14 @@ lingxi-customer-service/
 │   ├── pom.xml
 │   └── README.md
 │
-├── agent-service/                    # Python Agent Service，待开发
-│   └── README.md                     # 当前状态和迁移计划
+├── agent-service/                    # Python Agent Service，按原能力重新实现
+│   ├── app/                          # API、Graph、模型与数据库层
+│   ├── docs/                         # Python 服务规格
+│   ├── scripts/                      # 手动联调检查
+│   ├── sql/                          # Agent DB 建表脚本
+│   ├── tests/                        # 单元/仓储测试
+│   ├── pyproject.toml
+│   └── README.md
 │
 ├── docs/
 │   ├── SPEC.md                       # 总体拆分规格
@@ -231,12 +237,13 @@ mvn test
 
 ## 后续计划
 
-1. 将原 Python Agent 项目迁移到 `agent-service/`。
-2. 根据同一份 `business_service.proto` 生成 Python gRPC Stub。
-3. 先改造 Python 的 `query_order` 工具。
-4. 依次接入物流、售后、退款和工单工具。
-5. 完成 Python Agent → Java Business Service 的端到端联调。
-6. 再考虑 MyBatis、Business DB、服务治理和性能优化。
+1. 按原项目职责重新创建 Python Agent Service 骨架。
+2. 重新实现基础 FastAPI、LangGraph 和 LangChain Agent 能力。
+3. 根据同一份 `business_service.proto` 生成 Python gRPC Stub。
+4. 重新实现订单工具，并改为调用 Java `OrderService`。
+5. 依次实现物流、售后、退款和工单工具。
+6. 每个阶段完成后与用户确认，再进入下一阶段。
+7. 最后再考虑 MyBatis、Business DB、服务治理和性能优化。
 
 ## 文档
 
