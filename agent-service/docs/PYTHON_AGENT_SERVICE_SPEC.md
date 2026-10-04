@@ -1,26 +1,20 @@
 # 灵犀客服 Python Agent Service 规格书
 
 版本：v1.0  
-状态：迁移实施规格  
+状态：分阶段实施规格
 更新时间：2026-09-27
 
 ## 1. 文档目的
 
-本文档定义灵犀客服 Python Agent Service 的职责、目录结构、运行方式、Agent 工作流、工具迁移方案，以及与 Java Business Service 的 gRPC 对接契约。
+本文档定义灵犀客服 Python Agent Service 的职责、目录结构、运行方式、Agent 工作流、工具实现方案，以及与 Java Business Service 的 gRPC 对接契约。
 
-原始 Python 项目位于：
-
-```text
-D:\智能客服\MEWHELP python
-```
-
-目标重新实现目录为：
+项目目录：
 
 ```text
 D:\mewhelp-user-help\agent-service
 ```
 
-当前 `agent-service/` 已完成基础对话、Graph 消息状态和会话/消息仓储，完整工作流、SSE、知识库及 Java gRPC 联调仍在后续阶段。原项目代码不直接复制；以原项目的模块职责、工作流和验收行为为参考逐步重新实现。
+当前 `agent-service/` 已完成基础对话、Graph 消息状态和会话/消息仓储；完整工作流、SSE、知识库及 Java gRPC 联调仍在后续阶段。
 
 ## 2. 服务定位
 
@@ -70,9 +64,9 @@ Java Business Service
   └─ 工单
 ```
 
-## 3. 原项目参考基线
+## 3. 技术栈与能力规划
 
-原项目使用 Python 3.12+，主要依赖如下：
+Agent Service 使用 Python 3.12+；下表同时列出已接入和后续阶段需要的能力：
 
 | 能力 | 技术 |
 |---|---|
@@ -85,10 +79,10 @@ Java Business Service
 | 可观测性 | Langfuse |
 | Checkpoint | LangGraph SQLite Checkpointer |
 
-原项目主要目录，作为新项目的能力参考：
+服务代码按技术职责组织：
 
 ```text
-MEWHELP python/
+agent-service/
 ├── app/
 │   ├── api/          # FastAPI 接口
 │   ├── core/         # LLM、意图、检索、上下文、飞轮
@@ -98,16 +92,16 @@ MEWHELP python/
 │   ├── schemas/      # Pydantic 请求和响应模型
 │   ├── tools/        # Tool 注册、执行、MCP 客户端
 │   └── main.py       # 应用入口
-├── mcp_servers/      # 原物流和售后 MCP Server
+├── grpc_client/      # Java Business Service RPC 客户端（规划）
 ├── scripts/          # 评估、建库、飞轮等离线任务
 ├── sql/              # 数据库 DDL 和种子数据
 ├── data/             # 知识库和评估数据
 └── tests/            # 单元测试和验收测试
 ```
 
-## 4. 新项目目标目录结构
+## 4. 目标目录结构
 
-新项目按原项目的能力划分重新实现，并增加 gRPC Client。目录结构保留原有职责，但代码不直接复制：
+各模块按职责逐步实现，业务能力通过 gRPC Client 接入：
 
 ```text
 agent-service/
@@ -190,7 +184,7 @@ agent-service/
 
 ## 5. Agent 工作流
 
-原项目的核心工作流保留，不因为服务拆分而迁移到 Java：
+目标工作流由 Agent Service 编排，不迁移到 Java：
 
 ```text
 用户消息
@@ -249,7 +243,7 @@ Milvus + MySQL knowledge_chunks
 
 ### 6.2 改造为 gRPC Client 的工具
 
-| 原工具 | 新实现 | Java RPC |
+| Agent 工具 | 实现方式 | Java RPC |
 |---|---|---|
 | `query_order` | Python Tool 调 OrderClient | `OrderService.QueryOrder` |
 | 用户订单列表 | Python Tool 调 OrderClient | `OrderService.ListUserOrders` |
@@ -260,21 +254,9 @@ Milvus + MySQL knowledge_chunks
 | `submit_refund` | 用户确认后调用 RefundClient | `RefundService.SubmitRefund` |
 | `create_ticket` | 用户确认后调用 TicketClient | `TicketService.CreateTicket` |
 
-### 6.3 原 MCP Server 的处理
+### 6.3 MCP 工具边界
 
-原项目中的：
-
-```text
-mcp_servers/logistics_server.py
-mcp_servers/aftersales_server.py
-```
-
-在 Java 业务服务对应能力联调成功后，不再作为 Agent 的主业务调用路径。迁移顺序：
-
-1. 保留 MCP Server，保证旧流程可回滚。
-2. 完成 Python gRPC Client 和 Java RPC 联调。
-3. 将工具注册从 MCP Tool 切换为 gRPC Tool。
-4. 删除或归档 MCP Server。
+订单、物流、售后、退款与工单由 Java gRPC 提供；MCP 仅用于可插拔的外部动态工具，避免同一业务能力存在两条相互冲突的调用链。MCP 客户端在外部工具阶段按需接入。
 
 ## 7. Java gRPC 契约
 
@@ -335,7 +317,7 @@ message RequestContext {
 "grpcio-tools>=1.60.0",
 ```
 
-原项目依赖继续保留：
+Agent 基础依赖：
 
 ```toml
 "fastapi",
@@ -783,7 +765,7 @@ Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 - [ ] 创建 FastAPI 应用和 `/health` 接口
 - [ ] 创建 LangGraph 的 State、节点和构图骨架
 - [ ] 创建最小 `/api/chat` 接口
-- [ ] 不直接复制原项目代码
+- [ ] 按服务职责实现独立模块
 
 本阶段不接入 Java gRPC，不调用真实 LLM，不实现完整业务工具。目标是先建立新项目的运行骨架，并让你理解 FastAPI、Pydantic 和 LangGraph 的基本结构。
 
@@ -791,7 +773,7 @@ Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 
 1. 新 Python 服务是否可以启动。
 2. `/health` 和最小 `/api/chat` 是否可用。
-3. 是否接受按原项目职责重新划分的目录结构。
+3. 是否接受按服务职责划分的目录结构。
 4. 是否允许进入阶段 1。
 
 本阶段的教学顺序：
@@ -814,7 +796,7 @@ Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 - [ ] 实现 `/api/chat` 的流式响应
 - [ ] 为节点和 API 添加单元测试
 
-本阶段先复刻原项目的基础 Agent 对话能力，不接业务 RPC。这样可以先理解 Agent 的状态、节点和流式输出。
+本阶段完善基础 Agent 对话能力，不接业务 RPC，以便先验证状态、节点和流式输出。
 
 完成后需要与用户确认：
 
@@ -969,7 +951,7 @@ query_order Tool
 
 ## 18. 当前限制
 
-- Python Agent Service 正按原项目能力重新实现；当前已具备基础聊天、ORM 与仓储，但完整路由、RAG、工具和 SSE 尚未完成。
+- Python Agent Service 已具备基础聊天、ORM 与仓储，但完整路由、RAG、工具和 SSE 尚未完成。
 - 当前 Java 业务服务使用 Mock 数据。
 - Java 的退款和工单幂等记录暂存在内存中。
 - 当前未接入 JWT、mTLS、服务发现和网关。
