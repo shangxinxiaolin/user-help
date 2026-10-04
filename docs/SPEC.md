@@ -1,13 +1,12 @@
-# MewHelp 微服务拆分规格书
+# 灵犀客服微服务架构规格书
 
-> 本文档描述整体拆分方向。Java 业务服务的可执行细节以同目录的
-> Java 细节以 `business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md` 和
+> 本文档描述服务边界与目标架构。Java 细节以 `business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md` 和
 > `business-service/src/main/proto/business_service.proto` 为准；Python 细节以
 > `agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md` 为准。
 
 ## 文档目的
 
-本文档为 MewHelp 电商智能客服系统的微服务拆分提供详细规格说明，目标是将当前单体 Python 应用拆分为：
+本文档定义灵犀客服的目标服务边界：
 
 - **Python Agent Service**：负责对话编排、意图识别、工具调用、知识库检索
 - **Java Business Service**：负责订单、物流、售后、退款、工单等核心业务逻辑
@@ -33,7 +32,7 @@
 ### 1.2 当前目录结构
 
 ```text
-MEWHELP python/
+agent-service/（能力规划示意，部分模块尚未实现）
 ├── app/
 │   ├── api/          # HTTP 接口层
 │   ├── graph/        # LangGraph 工作流
@@ -912,7 +911,7 @@ message CreateTicketResponse {
 
 **注意**：
 
-- 当前项目中的 `tickets` 仍由 Python 原项目维护；Java Mock 阶段不写 Agent DB，避免跨服务直接写库。
+- `tickets` 的最终归属为 Java Business Service；Java Mock 阶段不写 Agent DB，避免跨服务直接写库。
 - 后续确定工单数据归属后，应通过业务服务自己的 MyBatis Mapper 持久化。
 - Agent Service 不应直接访问 Business DB。
 
@@ -1328,7 +1327,7 @@ Java Business Service 内部继续拆成订单、物流、售后、退款、工�
 
 #### 阶段 2：按原能力重新实现 Agent Service（分阶段）
 
-**目标**：参考原 Python 项目的模块职责和业务流程，在新 `agent-service` 中重新实现 Agent；业务工具最终通过 gRPC 调用 Java Business Service，不直接复制原项目代码。
+**目标**：在 `agent-service` 中完善对话编排、检索与工具执行；业务工具通过 gRPC 调用 Java Business Service。
 
 任务：
 
@@ -1339,7 +1338,7 @@ Java Business Service 内部继续拆成订单、物流、售后、退款、工�
 - [ ] 重新实现物流和售后只读 Tool
 - [ ] 重新实现退款确认流程
 - [ ] 重新实现工单确认流程
-- [ ] 在用户确认前保留原 MCP 设计作为参考，不直接删除
+- [ ] 如接入 MCP，将其限定为外部动态工具，不与 Java 核心业务能力重复
 
 Python 重实现顺序固定为：项目骨架 → 基础 Agent → gRPC 基础设施 → 订单 → 物流/售后只读工具 → 退款 → 工单。每一项完成后都必须与用户确认再进入下一项。
 

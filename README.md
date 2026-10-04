@@ -4,7 +4,7 @@
 
 灵犀客服计划将 AI Agent 与业务服务拆分：Python 负责对话理解、LangGraph 编排和工具调用；Java 负责订单、物流、售后、退款和工单等业务能力。
 
-Java Business Service 已提供 Mock 业务接口。Python Agent Service 正参考原项目逐步重新实现，目前已完成基础对话、会话/消息 ORM 与仓储；业务工具与 Java gRPC 尚未联调。
+Java Business Service 已提供 Mock 业务接口。Python Agent Service 正按目标架构逐步实现，目前已完成基础对话、会话/消息 ORM 与仓储；业务工具与 Java gRPC 尚未联调。
 
 ## 项目结构
 
@@ -39,8 +39,7 @@ lingxi-customer-service/
 │   └── README.md
 │
 ├── docs/
-│   ├── SPEC.md                       # 总体拆分规格
-│   └── architecture/                # 架构图
+│   └── SPEC.md                       # 总体架构规格
 │
 └── README.md
 ```
@@ -237,7 +236,7 @@ mvn test
 
 ## 后续计划
 
-1. 按原项目职责重新创建 Python Agent Service 骨架。
+1. 按 Agent 服务职责完善 Python Agent Service 骨架。
 2. 重新实现基础 FastAPI、LangGraph 和 LangChain Agent 能力。
 3. 根据同一份 `business_service.proto` 生成 Python gRPC Stub。
 4. 重新实现订单工具，并改为调用 Java `OrderService`。

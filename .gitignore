@@ -26,3 +26,15 @@ logs/
 *.sqlite-*
 *.db
 *.db-*
+
+# Local screenshots and images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.svg
+*.tif
+*.tiff
+*.heic
