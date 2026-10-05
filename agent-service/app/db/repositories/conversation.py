@@ -27,6 +27,19 @@ class ConversationRepository:
         async with self._session_factory() as session:
             return await session.get(Conversation, conversation_id)
 
+    async def get_conversation_for_user(
+        self,
+        conversation_id: int,
+        user_id: str,
+    ) -> Conversation | None:
+        async with self._session_factory() as session:
+            return await session.scalar(
+                select(Conversation).where(
+                    Conversation.id == conversation_id,
+                    Conversation.user_id == user_id,
+                )
+            )
+
     async def append_message(
         self,
         conversation_id: int,
