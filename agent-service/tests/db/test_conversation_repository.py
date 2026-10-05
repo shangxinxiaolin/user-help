@@ -53,6 +53,35 @@ async def test_create_and_get_conversation(
 
 
 @pytest.mark.asyncio
+async def test_get_conversation_for_user_returns_own_conversation(
+    repository: ConversationRepository,
+) -> None:
+    conversation_id = await repository.create_conversation("u1")
+
+    conversation = await repository.get_conversation_for_user(conversation_id, "u1")
+
+    assert conversation is not None
+    assert conversation.id == conversation_id
+    assert conversation.user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_for_user_hides_other_users_conversation(
+    repository: ConversationRepository,
+) -> None:
+    conversation_id = await repository.create_conversation("u1")
+
+    assert await repository.get_conversation_for_user(conversation_id, "u2") is None
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_for_user_returns_none_when_missing(
+    repository: ConversationRepository,
+) -> None:
+    assert await repository.get_conversation_for_user(999, "u1") is None
+
+
+@pytest.mark.asyncio
 async def test_append_and_list_messages_in_order(
     repository: ConversationRepository,
 ) -> None:

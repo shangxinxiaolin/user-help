@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.graph.answer import resolve_answer
 from app.graph.runtime import run_turn
@@ -16,9 +16,10 @@ def create_agent_router(graph: Any) -> APIRouter:
     )
     async def run_agent(
         request: AgentRequest,
+        raw_request: Request,
     ) -> AgentResponse:
         state = await run_turn(
-            graph=graph,
+            graph=raw_request.app.state.graph,
             message=request.message,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
