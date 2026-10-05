@@ -31,7 +31,7 @@ lingxi-customer-service/
 │
 ├── agent-service/                    # Python Agent Service，按原能力重新实现
 │   ├── app/                          # API、Graph、模型与数据库层
-│   ├── docs/                         # Python 服务规格
+│   ├── docs/                         # Python 服务规格与模块设计
 │   ├── scripts/                      # 手动联调检查
 │   ├── sql/                          # Agent DB 建表脚本
 │   ├── tests/                        # 单元/仓储测试
@@ -50,16 +50,19 @@ lingxi-customer-service/
 用户
   │ HTTP / SSE
   ▼
-Python Agent Service（规划中）
+Python Agent Service（逐步实现）
   ├── FastAPI
-  ├── LangGraph
-  ├── LangChain Tools
-  ├── 知识检索
+  ├── LangGraph 工作流
+  │     （指代消解 → 意图识别 → 分流 → 检索 → 置信度闸 → 主力 Agent → 日志）
+  ├── 知识检索（向量 + BM25 + 重排）
+  ├── 会话上下文（三层分层：原文 / 截短 / 摘要）
+  ├── 可观测 + 数据飞轮
+  ├── LangChain Tools + MCP
   └── gRPC Client
         │
         │ gRPC / Protobuf
         ▼
-Java Business Service（当前已实现）
+Java Business Service（Mock 已实现）
   ├── order
   ├── logistics
   ├── aftersales
