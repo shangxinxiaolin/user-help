@@ -255,13 +255,12 @@ A: 检查 `application.yml` 中的数据库配置，确保 MySQL 服务已启动
 
 ## 下一步
 
-1. 编写 Protobuf 文件 (`src/main/proto/business_service.proto`)
-2. 实现领域模型 (Domain Layer)
-3. 实现 Mock 数据生成器 (Infrastructure Layer)
-4. 实现应用服务 (Application Layer)
-5. 实现 gRPC 服务 (Interfaces Layer)
-6. 编写单元测试
-7. 与 Python Agent Service 联调
+Mock 业务接口已实现（订单、物流、售后、退款、工单及幂等）。后续：
+
+1. 与 Python Agent Service 联调（B 阶段：Python 工具 → gRPC → Java 查询订单）。
+2. 退款/工单从进程内存持久化到 Business DB（C 阶段）。
+3. 接入 MyBatis + MySQL，替换 Mock Mapper。
+4. 服务治理与性能优化（后续阶段）。
 
 ## 相关文档
 
