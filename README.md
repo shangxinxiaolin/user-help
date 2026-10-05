@@ -236,17 +236,20 @@ mvn test
 
 ## 后续计划
 
-1. 按 Agent 服务职责完善 Python Agent Service 骨架。
-2. 重新实现基础 FastAPI、LangGraph 和 LangChain Agent 能力。
-3. 根据同一份 `business_service.proto` 生成 Python gRPC Stub。
-4. 重新实现订单工具，并改为调用 Java `OrderService`。
-5. 依次实现物流、售后、退款和工单工具。
-6. 每个阶段完成后与用户确认，再进入下一阶段。
-7. 最后再考虑 MyBatis、Business DB、服务治理和性能优化。
+按能力分阶段推进，每阶段完成测试、汇报并等待确认后再进入下一阶段（详见 `docs/SPEC.md` 12.6 分阶段实施与验收）：
+
+1. **A 基础接线**：FastAPI 入口、会话仓储、LangGraph Checkpointer（已完成基础对话、会话/消息 ORM 与仓储）。
+2. **B 只读业务链**：Python 工具 → gRPC → Java 查询订单。
+3. **C 可靠退款**：确认状态 + Java 持久化退款与幂等。
+4. **D 政策依据与评测**：小范围政策 RAG、引用与低置信度处理。
+5. **E 统一产品入口**：经确认后增加 Java 鉴权与 Agent HTTP/SSE 转发。
+
+各模块的设计与选型理由见 `agent-service/docs/design/`（01–10 篇），总体架构与契约见 `docs/SPEC.md`。
 
 ## 文档
 
 - [总体拆分规格](docs/SPEC.md)
+- [模块设计与选型（10 篇）](agent-service/docs/design/)
 - [Java Business Service 规格](business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md)
 - [Python Agent Service 规格](agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md)
 - [Java 服务说明](business-service/README.md)
