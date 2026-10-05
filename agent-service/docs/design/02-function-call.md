@@ -31,5 +31,5 @@
 
 ## SPEC 落点
 
-- 工具映射：`query_order` / `query_logistics` / `query_warranty` 等改造为 gRPC Client（SPEC 6.2）。
+- 工具映射见 Python 服务规格 6.2；当前尚无这些工具，后续新增并适配 Java gRPC。
 - 工具审计：所有工具调用记 `ToolAuditLog`（SPEC 1.5.7）。

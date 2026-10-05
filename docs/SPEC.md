@@ -15,7 +15,9 @@
 
 ---
 
-## 一、当前项目现状分析
+## 一、能力规划与当前实现基线
+
+本章完整链路、工具、知识表及 Make 命令描述目标能力，不是已实现清单。当前 Java 为 Mock 业务服务；Python 只有 chat/log 两节点、基础 LLM 封装、会话模型与仓储、SQLite checkpoint。HTTP 尚未注入仓储，SSE、工具、检索、飞轮、观测尚未实现；当前没有对应 Makefile。
 
 ### 1.1 技术栈
 
@@ -110,7 +112,7 @@ LangGraph 工作流
 
 #### 数据库表
 
-位置：`app/db/models.py`
+位置：当前模型在 `app/db/models/`；下表除 conversations/messages 外均为规划。
 
 | 表 | 用途 | 归属服务 |
 |---|---|---|
@@ -131,7 +133,7 @@ LangGraph 工作流
 
 #### 1.5.1 置信度闸（Evidence Confidence Gate）
 
-**位置**：`app/core/confidence.py`、`app/graph/nodes.py:retrieve_knowledge`
+**规划位置**：`app/core/confidence.py`、`app/graph/nodes/knowledge.py`
 
 **原理**：在知识库检索后、模型生成答案前，通过四个信号量化证据质量，拒绝低质量证据。
 
@@ -151,7 +153,7 @@ score = W_TOP1 * top1_score        # 0.5：精排 Top1 得分
   ↓
 compute_evidence_confidence()
   ↓
-score < threshold (默认 0.26)
+score < threshold（0.26 为参考示例，须在自建评测集校准）
   ↓
 fallback_reply + 落入低置信度问题池
 ```
@@ -161,6 +163,8 @@ fallback_reply + 落入低置信度问题池
 ---
 
 #### 1.5.2 数据飞轮（Knowledge Flywheel）
+
+目标入口包括证据置信度低、生成自检 useful=false 和用户负反馈。审核检查垃圾、时效和价值/频次；低频不自动丢弃。采用批处理及 queue/detail/approve/reject API 和页面；核准答案、写入知识并验证向量可见性后才标记通过，失败保持可重试状态。当前尚无流水线或审核接口。
 
 **位置**：`app/core/flywheel.py`、`scripts/flywheel_pipeline.py`
 
@@ -304,7 +308,7 @@ make judge-check           # 忠实度裁判回归测试
 
 #### 1.5.5 上下文管理（三层分层：原文 + 截短 + 摘要）
 
-**位置**：`app/core/memory.py`、`app/core/summarizer.py`、`app/graph/nodes.py:_agent_messages`
+**规划位置**：`app/core/memory.py`、`app/core/summarizer.py`、Graph 的上下文组装函数；当前仅有摘要字段。
 
 **问题**：对话历史无限累积会撑爆上下文窗口；纯滑窗只认位置不认内容，扛不住用户回翻旧话题。
 
@@ -342,7 +346,7 @@ make judge-check           # 忠实度裁判回归测试
   ↓
 检查层2 已占 token 是否超预算
   ↓
-（工具结果不落消息表，数条数看不见；一轮长短不定，只能按用量）
+（条数无法代表长文本和工具结果体积；工具消息存储口径仍需冻结）
   ↓
 后台异步生成摘要（不阻塞当前回复）
   ↓
@@ -371,6 +375,8 @@ SystemMessage + 工具 schema 保持逐字不变
 ```
 
 **State 边界**：
+
+实施前需冻结第二个分层边界 ID、Graph/数据库消息 ID 映射、工具存储口径、摘要失败兜底和并发摘要版本更新语义；“两个 ID”尚不是已完成的字段契约。
 
 ```text
 State.messages 只进不出（事实源 + checkpoint，add_messages 自动追加）
@@ -480,7 +486,7 @@ Embedding 也能微调（校准"满减""花呗分期"等黑话召回），但是
 
 #### 1.5.7 工具审计（Tool Audit）
 
-**位置**：`app/tools/engine.py`、`app/db/models.py:ToolAuditLog`
+**规划位置**：`app/tools/engine.py`、`app/db/models/` 中的工具审计模型。
 
 **目的**：记录所有工具调用的执行过程、结果、耗时、重试次数。
 
@@ -533,7 +539,7 @@ runtime.init_graph()
 attach_observability(graph)
   ↓
 所有模型调用自动 trace
-  ├─ trace_id = conversation_id
+  ├─ trace_id = 本次请求或执行的独立标识
   ├─ session_id = conversation_id
   └─ metadata = {intent, intent_confidence}
 ```
@@ -607,12 +613,12 @@ make cost-report --days=7
 | LangChain | 封装 ChatOpenAI/PromptTemplate/结构化输出 | 接 LLM + Prompt 工程地基 |
 | LangGraph | 要分流、汇合、循环、状态贯穿 | 链式结构拼不出来时 |
 | 嵌入模型 BGE-M3 | 私有化部署、可领域微调、中英双强 | 生产自部署；课程演示可用云端 |
-| Milvus | 一库扛 dense + BM25 + RRF | demo 嫌重可先用 ChromaDB 起步 |
+| Milvus Standalone | 一库扛 dense + BM25 + RRF | 需验证服务版本和中文 analyzer；Lite 平台/功能兼容性另测，不承诺只改 URI 即可替换 |
 | bge-reranker | Cross-Encoder 排得准 | 召回够全但前排不够相关时才需要 |
 | 意图识别 LLM+prompt | 多轮 = 对话状态追踪 | 单句分类才用规则/微调小模型 |
 | LangGraph State | 上下文随图流转 | 会话上下文唯一事实源 |
 | @tool + MCP | 内置工具 + 外部系统即插即用 | 核心业务动态工具走 MCP |
-| Langfuse | 开源自部署、零侵入还原调用树 | 不介意上云换 LangSmith |
+| Langfuse | 自部署，回调采集受支持的模型/框架调用 | gRPC、Java 和普通函数需补充追踪与上下文传播 |
 | RoBERTa-wwm-ext | 编码器适合分类、全参够用 | 词表稳 + 口语丰富 + 成本卡死才微调 |
 
 ### 2.3 为什么这样拆
@@ -719,6 +725,8 @@ mcp_servers/aftersales_server.py  → aftersales/mapper/MockAftersalesMapper
 
 ### 4.1 通信协议
 
+公共消息为 `RequestContext { string user_id = 1; string conversation_id = 2; string trace_id = 3; }`。下面消息按实际 Proto 字段编号对齐；细粒度错误码为目标语义，当前 Java endpoint 仍返回 BUSINESS_ERROR，需在联调前冻结映射。服务认证也属于后续目标。
+
 - **协议**：gRPC
 - **序列化**：Protobuf
 - **传输**：HTTP/2
@@ -732,9 +740,8 @@ mcp_servers/aftersales_server.py  → aftersales/mapper/MockAftersalesMapper
 
 ```protobuf
 message QueryOrderRequest {
-  string user_id = 1;           // 用户 ID（从 Agent 上下文注入，不可信任模型填写）
-  string order_id = 2;          // 订单号（模型抽取）
-  string conversation_id = 3;   // 会话 ID（用于审计）
+  RequestContext context = 1;
+  string order_id = 2;
 }
 ```
 
@@ -771,8 +778,7 @@ message OrderSnapshot {
 
 ```protobuf
 message ListUserOrdersRequest {
-  string user_id = 1;
-  string conversation_id = 2;
+  RequestContext context = 1;
 }
 ```
 
@@ -801,9 +807,8 @@ message OrderBrief {
 
 ```protobuf
 message QueryLogisticsRequest {
-  string user_id = 1;
+  RequestContext context = 1;
   string tracking_no = 2;
-  string conversation_id = 3;
 }
 ```
 
@@ -813,7 +818,8 @@ message QueryLogisticsRequest {
 message QueryLogisticsResponse {
   bool success = 1;
   string error_code = 2;
-  LogisticsInfo info = 3;
+  string message = 3;
+  LogisticsInfo info = 4;
 }
 
 message LogisticsInfo {
@@ -832,9 +838,8 @@ message LogisticsInfo {
 
 ```protobuf
 message QueryWarrantyRequest {
-  string user_id = 1;
+  RequestContext context = 1;
   string order_id = 2;
-  string conversation_id = 3;
 }
 ```
 
@@ -844,7 +849,8 @@ message QueryWarrantyRequest {
 message QueryWarrantyResponse {
   bool success = 1;
   string error_code = 2;
-  WarrantyInfo info = 3;
+  string message = 3;
+  WarrantyInfo info = 4;
 }
 
 message WarrantyInfo {
@@ -860,9 +866,8 @@ message WarrantyInfo {
 
 ```protobuf
 message QueryReturnStatusRequest {
-  string user_id = 1;
+  RequestContext context = 1;
   string order_id = 2;
-  string conversation_id = 3;
 }
 ```
 
@@ -872,7 +877,8 @@ message QueryReturnStatusRequest {
 message QueryReturnStatusResponse {
   bool success = 1;
   string error_code = 2;
-  ReturnInfo info = 3;
+  string message = 3;
+  ReturnInfo info = 4;
 }
 
 message ReturnInfo {
@@ -890,9 +896,8 @@ message ReturnInfo {
 
 ```protobuf
 message ValidateRefundRequest {
-  string user_id = 1;
+  RequestContext context = 1;
   string order_id = 2;
-  string conversation_id = 3;
 }
 ```
 
@@ -914,11 +919,10 @@ message ValidateRefundResponse {
 
 ```protobuf
 message SubmitRefundRequest {
-  string user_id = 1;
+  RequestContext context = 1;
   string order_id = 2;
   string reason = 3;
-  string conversation_id = 4;
-  string idempotency_key = 5;   // 幂等键
+  string idempotency_key = 4;
 }
 ```
 
@@ -928,8 +932,8 @@ message SubmitRefundRequest {
 message SubmitRefundResponse {
   bool success = 1;
   string error_code = 2;
-  string refund_id = 3;
-  string message = 4;
+  string message = 3;
+  string refund_id = 4;
 }
 ```
 
@@ -948,11 +952,10 @@ message SubmitRefundResponse {
 
 ```protobuf
 message CreateTicketRequest {
-  string user_id = 1;
-  int64 conversation_id = 2;
-  string description = 3;
-  string ticket_type = 4;       // 售后 / 投诉 / 咨询 / 退款
-  string idempotency_key = 5;
+  RequestContext context = 1;
+  string description = 2;
+  string ticket_type = 3;
+  string idempotency_key = 4;
 }
 ```
 
@@ -962,8 +965,8 @@ message CreateTicketRequest {
 message CreateTicketResponse {
   bool success = 1;
   string error_code = 2;
-  string ticket_no = 3;
-  string message = 4;
+  string message = 3;
+  string ticket_no = 4;
 }
 ```
 
@@ -973,7 +976,7 @@ message CreateTicketResponse {
 
 ### 5.1 Agent Service 数据库
 
-**Schema**：`agent_db`
+**Schema**：`lingxi_agent`；隔离验证库为 `lingxi_agent_test`。当前只有 conversations/messages 的模型与 DDL，其余表为规划。
 
 | 表 | 用途 |
 |---|---|
@@ -991,7 +994,7 @@ message CreateTicketResponse {
 **外部依赖**：
 
 - Milvus：知识向量检索
-- LangGraph Checkpointer：`data/ch05_checkpoints.sqlite`
+- LangGraph Checkpointer：`data/checkpoints.sqlite`
 
 ### 5.2 Business Service 数据库
 
@@ -1021,7 +1024,7 @@ message CreateTicketResponse {
 
 - Agent Service 和 Business Service 共享同一个 MySQL 实例
 - 使用不同的数据库用户
-- Agent 只能读写 `agent_db`，Business 只能读写 `business_db`
+- Agent 只能读写 `lingxi_agent`，Business 只能读写自己的 `business_db`
 - 通过数据库权限控制强制边界
 
 #### 阶段二：物理隔离
@@ -1209,6 +1212,8 @@ Business Service
 
 ### 7.2 订单归属校验
 
+下列 Python/Java 片段是迁移伪代码，不是当前源码；当前校验位于 `OrderServiceImpl.query`，演示订单有 Mock 特例，实际行为应以源码和测试核实。
+
 **原则**：必须在 Business Service 中执行，不能只在 Agent Service 校验。
 
 当前实现：
@@ -1318,15 +1323,15 @@ ERROR [RefundService] user=u1 order=1001 action=submit error=ALREADY_REFUNDED
 
 ### 8.2 链路追踪
 
-使用 `conversation_id` 作为全局追踪 ID：
+使用独立 `trace_id` 关联单次请求，以 `conversation_id` / Langfuse `session_id` 关联多轮会话。下图为目标传播方式，当前尚未实现完整追踪：
 
 ```text
-前端请求 conversation_id=123
+前端请求 conversation_id=123，入口生成 trace_id=req-001
   ↓
 Agent Service (conversation_id=123)
-  ├─ gRPC metadata: trace-id=123
+  ├─ RequestContext.trace_id=req-001（未来 metadata 方案另行冻结）
   ↓
-Business Service (trace-id=123)
+Business Service (trace-id=req-001)
   ├─ 日志中记录 trace-id
 ```
 
@@ -1359,7 +1364,9 @@ Business Service (trace-id=123)
 
 ---
 
-## 九、迁移实施计划
+## 九、历史迁移规划（主实施顺序见 12.6）
+
+本章保留早期迁移思路，不是当前进度清单；未勾选框不表示已有骨架尚未实现。数据库、上线和回滚是未来方案，不应按本章绕过 12.6 的阶段闸门。
 
 ### 9.0 阶段闸门规则
 
@@ -1465,7 +1472,7 @@ Python 重实现顺序固定为：项目骨架 → 基础 Agent → gRPC 基础�
 
 验收：
 
-- Agent Service 只能访问 `agent_db`
+- Agent Service 只能访问 `lingxi_agent`
 - Business Service 只能访问 `business_db`
 - 跨服务查询必须通过 RPC
 - 数据迁移无丢失
@@ -1622,7 +1629,7 @@ Agent Service → Kafka → Knowledge Worker
 
 - Java 已有订单、物流、售后、退款、工单服务及 gRPC Endpoint，业务数据为 Mock；退款与工单幂等记录在内存中。
 - Python 当前 Graph 为 `START → chat → log → END`；会话/消息 ORM、仓储和 SQLite checkpointer 封装已经存在，完整工具循环、RAG 与业务 gRPC 客户端尚未贯通。
-- `agent-service/app/main.py` 已设置 `app.state.graph`，但路由注册与聊天处理引用未定义的 `graph`，应先修复入口并验证持久化 Graph 的实际使用。
+- HTTP 入口已在请求时读取 `app.state.graph`，旧未定义变量问题已修复；但 Graph 和 runtime 尚未注入 repository，归属校验和消息落库未端到端生效，A 阶段仍待验收。
 - 规格中的置信度闸、知识飞轮和对话挖知识属于后续能力，不能作为当前已实现成果介绍。
 
 ### 12.2 从 Chiron 学什么
@@ -1691,6 +1698,12 @@ Chiron 提供参考实现而非可直接复制的标准：其 Transport 中 `Flu
 
 ### 12.6 分阶段实施与验收
 
+本节为唯一主实施顺序；第 9 章和服务规格的阶段划分为历史规划或本节的子任务。实现存在不等于验收通过。
+
+已确定范围：repository 经 FastAPI Depends 注入；实际运行接真实模型 API，确定性测试使用替身；RAG 使用支持所需能力的 Milvus Standalone、BGE-M3 和 bge-reranker API，Lite 兼容性另测；飞轮批处理并提供队列、详情、通过、驳回接口及审核页面；微调后置，主题归类初版使用 LLM 打标。以上尚未实现的内容不计入成果。
+
+模块落地顺序：A 接线验收 → gRPC 基础设施 → ReAct 工具循环 → B 查订单联调 → 意图/指代/条件路由 → 三层上下文 → D 检索与证据闸 → 可观测 → 飞轮审核 → 固定案例评测 → C 持久化退款。C、D 为能力标签，不强制按字母顺序；E 单独确认。物流、售后与工单按业务需求扩展并逐项验收。
+
 | 阶段 | 工作范围 | 最低验收标准 |
 |---|---|---|
 | A：基础接线 | 修复 FastAPI 入口，接入会话仓储和 checkpoint | 应用可启动；会话只能由所属用户读取/续聊；消息入库；关闭并重建应用后可读到同一会话 checkpoint |
@@ -1719,7 +1732,7 @@ Chiron 提供参考实现而非可直接复制的标准：其 Transport 中 `Flu
 
 ### 13.1 Protobuf 完整定义
 
-见单独文件：`business_service.proto`
+唯一契约见 `business-service/src/main/proto/business_service.proto`。错误码表为目标语义，Java 当前仍统一返回 BUSINESS_ERROR，联调前需冻结映射。
 
 ### 13.2 Java 工程结构
 
@@ -1752,17 +1765,17 @@ app/tools/builtin/orders.py   # 改为 RPC 调用
 app/tools/builtin/refunds.py  # 改为 RPC 调用
 app/tools/builtin/tickets.py  # 改为 RPC 调用
 app/tools/mcp_client.py        # 移除或保留为外部工具接入
-app/config.py                  # 增加 Business Service 地址配置
+app/core/config.py             # 增加 Business Service 地址配置
 ```
 
 需要新增的文件：
 
 ```text
-app/grpc/
-  ├── __init__.py
-  ├── client.py              # gRPC Client 封装
-  ├── business_pb2.py        # Protobuf 生成的消息类
-  └── business_pb2_grpc.py   # Protobuf 生成的服务类
+app/grpc_client/
+  ├── channel.py             # Channel 生命周期
+  ├── context.py             # RequestContext 构造
+  ├── order_client.py        # 订单 RPC 适配
+  └── generated/             # business_service_pb2.py / business_service_pb2_grpc.py
 ```
 
 需要删除的文件：

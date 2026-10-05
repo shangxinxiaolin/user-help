@@ -29,7 +29,7 @@ Query 理解（改写求准 / 扩写求全 / HyDE）
 | 选型 | 理由 |
 |---|---|
 | BGE-M3 | 私有化部署、可领域微调、中英双强 |
-| Milvus（2.5+） | 一库扛 dense + BM25 两条路径、原生 RRF 融合，省掉另起 Elasticsearch 集群 |
+| Milvus Standalone（版本需验证） | 一库扛 dense + BM25 + RRF；需验收中文 analyzer、索引及可见性。Lite 平台/功能兼容性另测，不承诺只改 URI 即可替换 |
 | bge-reranker-v2-m3 | 与 BGE-M3 同底座，Cross-Encoder 精排，中英文榜单稳 |
 
 ## 关键结论与坑
@@ -44,3 +44,5 @@ Query 理解（改写求准 / 扩写求全 / HyDE）
 
 - 混合检索四策略对比：SPEC 1.5.4（vector / bm25 / hybrid / hybrid_rerank）。
 - 证据置信度闸：SPEC 1.5.1（`evidence_confidence`）。
+
+当前仅有设计。嵌入与重排初版采用真实 API，测试用替身；召回条数与阈值须经自建评测集校准，不作为当前成绩。

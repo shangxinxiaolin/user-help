@@ -2,7 +2,7 @@
 
 版本：v2.0  
 状态：可实施草案  
-更新时间：2026-09-26
+更新时间：2026-10-06
 
 ## 1. 目标
 
@@ -50,7 +50,7 @@ Java Business Service
 
 | 项目 | 选择 |
 |---|---|
-| Java | 21 |
+| Java | 开发基线 21；POM java.version=21 与 compiler source/target=17 并存，实际构建目标需单独统一和验证 |
 | Web 框架 | Spring Boot 3.2.0 |
 | RPC | gRPC 1.60.1 |
 | 接口定义 | Protobuf 3.25.1 |
@@ -281,7 +281,7 @@ mvn clean test
 mvn spring-boot:run
 ```
 
-注意：当前工作区路径包含中文，`protobuf-maven-plugin` 在 Windows 下可能无法处理中文绝对路径。若本机出现 `Could not make proto path relative`，请把项目放到纯 ASCII 路径后构建，或通过 Windows 开发环境解决路径编码问题。
+注意：历史上中文路径曾导致 Windows Protobuf 插件失败；当前工作区是英文路径 `D:\mewhelp-user-help`。若换到中文目录出现路径编码问题，使用纯 ASCII 路径后构建。
 
 ## 10. 测试要求
 
@@ -413,12 +413,13 @@ Java Business Service 采用“按业务模块逐步开发、每阶段验收后�
 
 ## 12. 后续实现顺序
 
-1. 稳定本文件和 `business_service.proto`，不要先改 Python 工具。
-2. 为每个业务模块补充 `api/dto/vo`，让 HTTP 调试协议与领域对象分离。
-3. 把 `Mock*Mapper` 替换为 MyBatis 实现，接口保持不变。
-4. 将 Java endpoint 的错误码细化为契约中的稳定错误码。
-5. Python 生成同一份 proto 的 stub，先联调 `QueryOrder`。
-6. 依次联调物流、售后、退款和工单。
+主顺序以仓库 `docs/SPEC.md` 12.6 为准。Java 侧子任务：
+
+1. 冻结实际 Proto 与业务错误码映射，核实 JDK/构建目标。
+2. 保留 Mock Mapper，先由 Python Stub 联调 QueryOrder，验收归属和失败结果。
+3. 按需联调物流、售后等只读接口，补 endpoint 集成测试。
+4. C 阶段经确认后接入 Business DB、退款状态机和持久化幂等；工单持久化按同一边界推进。
+5. DTO/VO、监控及部署保护按具体需求补充，不作为 Mock 联调的前置条件。
 
 ## 13. 当前明确限制
 
@@ -426,4 +427,4 @@ Java Business Service 采用“按业务模块逐步开发、每阶段验收后�
 - 工单、退款幂等数据只保存在 Java 进程内存中。
 - 当前 Java gRPC endpoint 已实现基本调用，但错误码仍需按契约细化。
 - 当前明文 gRPC 与 HTTP 调试路由没有服务间认证或可信用户身份，不能直接对公网开放。
-- 当前 Python Agent Service 尚未迁移到本目录，不能宣称端到端客服已经完成。
+- Python 服务已在相邻 `agent-service/` 建立基础聊天与仓储，但仓储 HTTP 接线和 Java gRPC 联调尚未完成，不能宣称端到端客服完成。
