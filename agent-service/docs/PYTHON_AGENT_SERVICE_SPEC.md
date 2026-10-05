@@ -2,7 +2,7 @@
 
 版本：v1.0  
 状态：分阶段实施规格
-更新时间：2026-09-27
+更新时间：2026-10-06
 
 ## 1. 文档目的
 
@@ -92,7 +92,7 @@ agent-service/
 │   ├── schemas/      # Pydantic 请求和响应模型
 │   ├── tools/        # Tool 注册、执行、MCP 客户端
 │   └── main.py       # 应用入口
-├── grpc_client/      # Java Business Service RPC 客户端（规划）
+├── app/grpc_client/  # Java Business Service RPC 客户端（规划）
 ├── scripts/          # 评估、建库、飞轮等离线任务
 ├── sql/              # 数据库 DDL 和种子数据
 ├── data/             # 知识库和评估数据
@@ -125,8 +125,8 @@ agent-service/
 │   │   ├── flywheel.py          # 数据飞轮
 │   │   └── observability.py     # Langfuse 和指标
 │   ├── db/
-│   │   ├── models.py            # Agent DB 模型
-│   │   ├── repository.py        # Agent DB 仓储
+│   │   ├── models/              # Agent DB 模型包
+│   │   ├── repositories/        # Agent DB 仓储包
 │   │   └── base.py
 │   ├── graph/
 │   │   ├── state.py             # ConversationState
@@ -163,7 +163,7 @@ agent-service/
 │   │       ├── orders.py
 │   │       ├── refunds.py
 │   │       └── tickets.py
-│   ├── config.py
+│   ├── core/config.py          # 位于 core 包的配置文件
 │   └── main.py
 ├── proto/
 │   └── business_service.proto    # 从 Java 服务同步的契约副本
@@ -263,7 +263,7 @@ Milvus + MySQL knowledge_chunks
 唯一契约文件：
 
 ```text
-../../business-service/src/main/proto/business_service.proto
+business-service/src/main/proto/business_service.proto（相对于仓库根）
 ```
 
 当前包含：
@@ -361,7 +361,7 @@ app/grpc_client/generated/
 └── business_service_pb2_grpc.py
 ```
 
-建议在生成目录增加空的 `__init__.py`，并在生成后修正 `business_service_pb2_grpc.py` 的本地导入，使其适配包路径：
+生成目录需要 `__init__.py`。生成脚本应自动适配包内导入，不由开发者每次手工编辑生成文件；所需结果如下：
 
 ```python
 from . import business_service_pb2 as business__service__pb2
@@ -676,9 +676,11 @@ RERANK_BASE_URL=
 RERANK_API_KEY=
 RERANK_MODEL=
 
-MYSQL_DSN=
+DATABASE_URL=mysql+asyncmy://root:CHANGE_ME_MYSQL_PASSWORD@127.0.0.1:3307/lingxi_agent
+TEST_DATABASE_URL=mysql+asyncmy://root:CHANGE_ME_MYSQL_PASSWORD@127.0.0.1:3307/lingxi_agent_test
+CHECKPOINTER_DB_PATH=data/checkpoints.sqlite
 MILVUS_URI=
-LANGFUSE_HOST=
+LANGFUSE_BASE_URL=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
 ```
@@ -708,15 +710,15 @@ grpcurl -plaintext 127.0.0.1:9090 list
 
 ```powershell
 cd D:\mewhelp-user-help\agent-service
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv sync --group dev
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Python 服务启动前必须保证 `BUSINESS_GRPC_TARGET` 指向 Java 服务。
 
 ## 16. 分阶段实施计划
+
+主实施顺序以仓库总规格 `docs/SPEC.md` 12.6 为准；下列编号为早期服务子任务，未勾选框不代表已有能力尚未实现。当前 A 的 HTTP 仓储注入尚未验收。最新范围：FastAPI Depends、真实 API 运行与替身测试、Milvus Standalone、批处理飞轮及完整审核接口/页面；微调暂不实施。
 
 本项目采用“单阶段交付、阶段闸门确认”的开发方式。每个阶段只完成当前阶段范围内的代码和测试；阶段验收完成后，必须把结果、变更文件、测试结果和遗留问题告诉用户，并等待用户明确确认，才能进入下一阶段。
 
@@ -911,7 +913,7 @@ query_order Tool
 
 后续每次开发只处理用户当前确认的阶段。用户提出“继续”时，应先确认当前阶段和剩余验收项；如果当前阶段尚未验收，优先完成当前阶段，不擅自进入后续阶段。
 
-每次代码或文档写入操作最多只允许修改或新增一个文件。完成该文件的写入后，应先汇报变更并按需运行针对性检查或测试，等待用户明确确认后，才能写入下一个文件；不得在一次写入中同时修改多个文件。
+默认每次只修改或新增一个文件，检查并汇报后等待确认。用户明确授权批量修改时，可在授权范围内一次处理多个文件并统一验收；文档修复授权不等于代码修改授权。
 
 每次阶段交付后的最终回复必须以“当前停在阶段闸门，等待你的确认”结束，除非用户已经明确授权进入下一阶段。
 
@@ -954,6 +956,7 @@ query_order Tool
 ## 18. 当前限制
 
 - Python Agent Service 已具备基础聊天、ORM 与仓储，但完整路由、RAG、工具和 SSE 尚未完成。
+- HTTP 入口尚未传入 repository，归属查询与消息落库未在 API 主链路生效；SQLite checkpoint 可独立恢复同一 thread 的 Graph 消息，不等于已经实现 interrupt/resume。
 - 当前 Java 业务服务使用 Mock 数据。
 - Java 的退款和工单幂等记录暂存在内存中。
 - 当前未接入 JWT、mTLS、服务发现和网关。

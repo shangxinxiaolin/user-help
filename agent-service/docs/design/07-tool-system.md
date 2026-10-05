@@ -31,5 +31,5 @@ main_agent ⇄ agent_tools
 ## SPEC 落点
 
 - 工具审计：SPEC 1.5.7（`ToolAuditLog` 字段表）。
-- 工具映射与迁移：SPEC 6.2（内置工具改造为 gRPC Client）、13.3（改造清单）。
+- 工具映射见 Python 服务规格 6.2；总规格 13.3 为规划清单，当前工具文件尚未建立。
 - 技术栈：MCP（SPEC 1.1）。

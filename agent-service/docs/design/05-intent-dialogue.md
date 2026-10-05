@@ -51,5 +51,5 @@ def route_by_intent(state):
 
 ## SPEC 落点
 
-- 节点：`resolve_reference` / `classify_intent` / `route_by_intent`（SPEC 5.1）。
+- 节点：`resolve_reference` / `classify_intent` / `route_by_intent`（Python 服务规格第 5 节，均为待实现）。
 - 代码：`app/core/coref.py`（指代消解）、`app/core/intent.py`（意图分类）。

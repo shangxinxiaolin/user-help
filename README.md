@@ -98,14 +98,14 @@ Java Business Service 已完成：
 - 业务数据全部是 Mock 数据。
 - 当前没有 Business DB。
 - 退款和工单幂等记录只保存在 Java 进程内存中。
-- Python Agent Service 尚未迁移和联调。
+- Python 已有基础聊天、会话/消息模型与仓储、SQLite checkpoint；HTTP 入口尚未注入仓储，业务 gRPC 尚未联调。
 
 ## 环境要求
 
 - JDK 21
 - Maven 3.8+
 - Python 3.12+，Python Agent 开发阶段使用
-- 当前 Mock 阶段不需要 MySQL
+- Java Mock 阶段不需要 MySQL；Python 仓储验证需要独立的 Agent MySQL 数据库。
 
 建议将项目放在纯英文路径，例如：
 
@@ -166,10 +166,11 @@ mvn clean compile
 
 ## HTTP 调试接口
 
-健康检查：
+HTTP 调试可用性检查（当前 POM 未声明 Actuator，不能将 `/actuator/health` 当作可用端点）：
 
 ```http
-GET http://127.0.0.1:8080/actuator/health
+GET http://127.0.0.1:8080/api/business/orders/1001
+X-User-Id: u1
 ```
 
 查询订单：
@@ -241,7 +242,9 @@ mvn test
 
 按能力分阶段推进，每阶段完成测试、汇报并等待确认后再进入下一阶段（详见 `docs/SPEC.md` 12.6 分阶段实施与验收）：
 
-1. **A 基础接线**：FastAPI 入口、会话仓储、LangGraph Checkpointer（已完成基础对话、会话/消息 ORM 与仓储）。
+下列 A–E 是能力标签；具体学习/实施顺序统一以总规格 12.6 为准，不强制按字母顺序。
+
+1. **A 基础接线（尚未验收）**：基础对话、会话/消息 ORM、仓储与 checkpoint 封装已存在；还需通过 FastAPI Depends 接通 HTTP 仓储注入，验证归属拒绝、消息落库和重启恢复。
 2. **B 只读业务链**：Python 工具 → gRPC → Java 查询订单。
 3. **C 可靠退款**：确认状态 + Java 持久化退款与幂等。
 4. **D 政策依据与评测**：小范围政策 RAG、引用与低置信度处理。
@@ -262,4 +265,4 @@ mvn test
 ---
 
 **项目名称**：灵犀客服  
-**最后更新**：2026-09-27
+**最后更新**：2026-10-06
