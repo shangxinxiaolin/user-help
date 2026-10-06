@@ -60,49 +60,19 @@ flowchart LR
     Agent -->|gRPC / Protobuf| Rpc
     Agent --> AgentStore[("Agent DB · checkpoint · Milvus")]
     Agent --> LLM["LLM"]
-    Biz --> BizDB[("Business DB<br/>当前为 Mock Mapper")]
+    Biz --> BizDB[("Business DB（规划）<br/>当前使用内存 Mock Mapper")]
 ```
 
 **目标架构已确定，E 阶段尚未实现**：Gateway/BFF 与业务模块同处一个 Spring Boot 项目和进程，Python 是内部 Agent 服务。
 
-```text
-客户端 → HTTPS → Spring Boot
-                  ├─ entry：认证鉴权、限流、产品路由、Agent SSE 转发
-                  ├─ 普通请求 → 业务 Service → Business DB
-                  └─ Agent 请求 → 内部 HTTP/SSE → Python Agent
-                                                  ├─ 会话 / Graph / RAG / checkpoint
-                                                  └─ gRPC → 同一 Spring Boot 的 Business RPC
-```
+当前开发直接请求 Python JSON 接口，Java HTTP 用于业务调试，两个服务的业务 gRPC 尚未联调。Java 入口不复制 Python 状态，等待 Agent 时不持有业务事务；Python 只回调 Business RPC。
 
-当前开发仍直接请求 Python JSON 接口；SSE 和 Java Agent 转发待实现，Java HTTP 目前仅为业务调试。Java 入口不复制 Python 会话状态，调用 Agent 时不持有业务事务；Python 只回调 Business RPC，不回调 Agent 入口。下面是统一入口实施前的开发链路与能力规划：
+按阅读需要查看详细图：
 
-```text
-用户
-  │ HTTP / SSE
-  ▼
-Python Agent Service（逐步实现）
-  ├── FastAPI
-  ├── LangGraph 工作流
-  │     （指代消解 → 意图识别 → 分流 → 检索 → 置信度闸 → 主力 Agent → 日志）
-  ├── 知识检索（向量 + BM25 + 重排）
-  ├── 会话上下文（三层分层：原文 / 截短 / 摘要）
-  ├── 可观测 + 数据飞轮
-  ├── LangChain Tools + MCP
-  └── gRPC Client
-        │
-        │ gRPC / Protobuf
-        ▼
-Java Business Service（Mock 已实现）
-  ├── order
-  ├── logistics
-  ├── aftersales
-  ├── refund
-  └── ticket
-        │
-        ▼
-当前：Mock Mapper
-后续：MyBatis + Business DB
-```
+- [当前开发拓扑](docs/ARCHITECTURE.md#current-topology)
+- [当前聊天请求时序](docs/ARCHITECTURE.md#chat-sequence)
+- [目标 LangGraph 工作流](docs/ARCHITECTURE.md#agent-workflow)
+- [Java 业务分层](docs/ARCHITECTURE.md#business-layers)
 
 ## 当前完成情况
 
@@ -128,7 +98,7 @@ Java Business Service 已完成：
 - 业务数据全部是 Mock 数据。
 - 当前没有 Business DB。
 - 退款和工单幂等记录只保存在 Java 进程内存中。
-- Python 已有基础聊天、会话/消息模型与仓储、SQLite checkpoint；HTTP 入口尚未注入仓储，业务 gRPC 尚未联调。
+- Python 已有基础聊天、会话/消息仓储与 SQLite checkpoint；`/api/chat` 仓储接线已开始，`/api/agent` 和测试生命周期适配尚未完成，A 阶段未验收，业务 gRPC 未联调。
 
 ## 环境要求
 
