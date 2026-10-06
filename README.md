@@ -39,12 +39,29 @@ lingxi-customer-service/
 │   └── README.md
 │
 ├── docs/
-│   └── SPEC.md                       # 总体架构规格
+│   ├── SPEC.md                       # 总体架构规格
+│   └── ARCHITECTURE.md               # 架构图（Mermaid）
 │
 └── README.md
 ```
 
 ## 架构
+
+> 完整架构图（目标架构、当前实现、请求时序、LangGraph 工作流、Java 分层）见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+```mermaid
+flowchart LR
+    Client["客户端"] -->|HTTPS| Entry
+    subgraph Java["Spring Boot（同一进程）"]
+        Entry["entry Gateway/BFF"] -->|普通请求| Biz["业务 Service<br/>order · logistics · aftersales · refund · ticket"]
+        Rpc["Business RPC :9090"] --> Biz
+    end
+    Entry -->|内部 HTTP/SSE| Agent["Python Agent Service<br/>FastAPI + LangGraph"]
+    Agent -->|gRPC / Protobuf| Rpc
+    Agent --> AgentStore[("Agent DB · checkpoint · Milvus")]
+    Agent --> LLM["LLM"]
+    Biz --> BizDB[("Business DB<br/>当前为 Mock Mapper")]
+```
 
 **目标架构已确定，E 阶段尚未实现**：Gateway/BFF 与业务模块同处一个 Spring Boot 项目和进程，Python 是内部 Agent 服务。
 
@@ -268,6 +285,7 @@ mvn test
 ## 文档
 
 - [总体拆分规格](docs/SPEC.md)
+- [架构图](docs/ARCHITECTURE.md)
 - [模块设计与选型（10 篇）](agent-service/docs/design/)
 - [Java Business Service 规格](business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md)
 - [Python Agent Service 规格](agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md)
