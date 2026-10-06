@@ -3,6 +3,7 @@
 版本：v2.0  
 状态：可实施草案  
 更新时间：2026-10-06
+更新时间：2026-10-06
 
 ## 1. 目标
 
@@ -54,6 +55,7 @@ Java Business Service
 
 | 项目 | 选择 |
 |---|---|
+| Java | 开发基线 21；POM java.version=21 与 compiler source/target=17 并存，实际构建目标需单独统一和验证 |
 | Java | 开发基线 21；POM java.version=21 与 compiler source/target=17 并存，实际构建目标需单独统一和验证 |
 | Web 框架 | Spring Boot 3.2.0 |
 | RPC | gRPC 1.60.1 |
@@ -286,6 +288,7 @@ mvn spring-boot:run
 ```
 
 注意：历史上中文路径曾导致 Windows Protobuf 插件失败；当前工作区是英文路径 `D:\mewhelp-user-help`。若换到中文目录出现路径编码问题，使用纯 ASCII 路径后构建。
+注意：历史上中文路径曾导致 Windows Protobuf 插件失败；当前工作区是英文路径 `D:\mewhelp-user-help`。若换到中文目录出现路径编码问题，使用纯 ASCII 路径后构建。
 
 ## 10. 测试要求
 
@@ -433,4 +436,5 @@ E 阶段在当前应用新建 `entry/{security,agent,web,config}`，实现认证
 - 工单、退款幂等数据只保存在 Java 进程内存中。
 - 当前 Java gRPC endpoint 已实现基本调用，但错误码仍需按契约细化。
 - 当前明文 gRPC 与 HTTP 调试路由没有服务间认证或可信用户身份，不能直接对公网开放。
+- Python 服务已在相邻 `agent-service/` 建立基础聊天与仓储，但仓储 HTTP 接线和 Java gRPC 联调尚未完成，不能宣称端到端客服完成。
 - Python 服务已在相邻 `agent-service/` 建立基础聊天与仓储，但仓储 HTTP 接线和 Java gRPC 联调尚未完成，不能宣称端到端客服完成。
