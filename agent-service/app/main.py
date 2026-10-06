@@ -1,39 +1,41 @@
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.dependencies import get_conversation_repository
-from app.db.base import create_engine
-from app.db.repositories import ConversationRepository
 from app.api.agent import create_agent_router
 from app.core.config import get_settings
+from app.db.base import create_engine
 from app.db.checkpointer import open_checkpointer
+from app.db.repositories import ConversationRepository
 from app.graph.answer import resolve_answer
 from app.graph.build import build_graph
 from app.graph.runtime import ConversationNotFound, run_turn
 from app.schemas.chat import ChatRequest, ChatResponse
 
 
-def create_app(model: Any | None = None) -> FastAPI:
+def create_app(
+    model: Any | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        if model is not None:
-            # 现有 FakeChatModel 测试暂沿用无持久化 Graph
-            yield
-            return
-
         settings = get_settings()
-        engine = create_engine(settings.database_url)
+        owned_engine = None
+        factory = session_factory
 
         try:
-            session_factory = async_sessionmaker(
-                engine,
-                expire_on_commit=False,
-            )
-            repository = ConversationRepository(session_factory)
+            if factory is None:
+                owned_engine = create_engine(settings.database_url)
+                factory = async_sessionmaker(
+                    owned_engine,
+                    expire_on_commit=False,
+                )
+
+            repository = ConversationRepository(factory)
             app.state.conversation_repository = repository
 
             async with open_checkpointer(
@@ -45,19 +47,18 @@ def create_app(model: Any | None = None) -> FastAPI:
                     checkpointer=saver,
                 )
                 yield
-
         finally:
-            await engine.dispose()
+            if owned_engine is not None:
+                await owned_engine.dispose()
 
     app = FastAPI(
         title="Lingxi Agent Service",
         version="0.1.0",
         lifespan=lifespan,
     )
-    app.state.graph = build_graph(model)
 
     app.include_router(
-        create_agent_router(app.state.graph)
+        create_agent_router()
     )
 
     @app.get("/health")
