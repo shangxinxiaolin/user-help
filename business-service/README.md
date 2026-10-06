@@ -41,7 +41,24 @@
 | gRPC 集成测试 | 待补充，当前 POM 未声明 grpc-testing |
 | JaCoCo | 测试覆盖率 |
 
-## 项目结构
+## 架构与业务分层
+
+```mermaid
+flowchart LR
+    Dev["本地 HTTP 调试"] --> HTTP["BusinessController"]
+    Python["Python Agent（联调待完成）"] -.->|gRPC| RPC["Business RPC"]
+    HTTP --> Service["业务 Service / impl"]
+    RPC --> Service
+    Service --> Mapper["Mapper 接口"] --> Mock["Mock Mapper / 内存幂等"]
+    Mapper -.-> DB[("Business DB / MyBatis（规划）")]
+    Client["客户端"] -.-> Entry["entry Gateway/BFF（E 阶段规划）"]
+    Entry -.-> Service
+    Entry -.->|内部 HTTP/SSE| Python
+```
+
+Java 调试入口与业务 gRPC 已有代码；entry 和真实数据库尚未实现。完整 [目标系统架构](../docs/ARCHITECTURE.md#target-architecture) 与 [业务分层图](../docs/ARCHITECTURE.md#business-layers) 集中维护在架构文档中。
+
+### 当前目录
 
 ```
 src/main/java/com/shangui/userhelp/

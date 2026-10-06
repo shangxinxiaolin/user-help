@@ -1,6 +1,8 @@
 # 灵犀客服架构图
 
-本文用 Mermaid 图描述灵犀客服的目标架构、当前实现与关键链路。图中 **实线/实色** 表示已实现，**虚线/灰色** 表示规划中尚未实现。详细契约与设计见 [总体规格](SPEC.md)。
+本文集中维护目标架构、当前接线与请求流程。目标图中的实线表示设计调用方向，不代表已实现；当前拓扑中的虚线表示待实现或待联调路径。代码接线存在也不等于已经验收。详细契约见 [总体规格](SPEC.md)。根 README 展示系统概览，服务 README 展示各自局部视图。
+
+<a id="target-architecture"></a>
 
 ## 1. 目标架构（E 阶段，尚未实现）
 
@@ -44,9 +46,11 @@ flowchart LR
     Graph --> LLM
 ```
 
+<a id="current-topology"></a>
+
 ## 2. 当前实现（开发阶段拓扑）
 
-统一入口尚未实现，开发时直接请求 Python JSON 接口；Java HTTP 仅用于业务调试；Python 与 Java 的 gRPC 尚未联调。
+统一入口尚未实现，开发时直接请求 Python JSON 接口；Java HTTP 仅用于业务调试；Python 与 Java 的 gRPC 尚未联调。`/api/chat` 已开始仓储注入，`/api/agent` 仍未注入；Fake 模型分支跳过仓储初始化，当前持久化链路未完成验收。
 
 ```mermaid
 flowchart TB
@@ -93,7 +97,7 @@ flowchart TB
     Dev -->|grpcurl| Grpc
     ChatNode --> LLM
     Repo --> MySQL
-    LG -.->|checkpointer| Sqlite
+    LG -->|正常 lifespan 的 checkpointer| Sqlite
     ToolsTodo -.->|gRPC（未联调）| Grpc
     Proto -.- Grpc
     Proto -.- ToolsTodo
@@ -102,7 +106,11 @@ flowchart TB
     class ToolsTodo todo
 ```
 
+<a id="chat-sequence"></a>
+
 ## 3. 当前对话请求时序（`/api/chat`）
+
+以下描述正常 lifespan、仓储和表可用时的成功与拒绝路径；现有测试尚待生命周期适配，不宣称运行验收通过。MySQL 写库与 SQLite checkpoint 不属于同一事务，checkpoint 在执行中保存快照，不只在最终回复后写一次。
 
 ```mermaid
 sequenceDiagram
@@ -121,18 +129,26 @@ sequenceDiagram
         RT->>Repo: create_conversation(user_id)
     else 已有会话
         RT->>Repo: get_conversation_for_user(id, user_id)
-        Repo-->>RT: 不存在/不属于该用户 → 404
+        Repo-->>RT: 会话对象或 None
     end
+    alt 不存在或不属于该用户
+        RT-->>API: ConversationNotFound
+        API-->>C: HTTP 404（不执行 Graph）
+    else 允许访问
     RT->>Repo: append_message(role=user)
     RT->>G: ainvoke(state, thread_id=conversation_id)
+    Note over G,CP: 执行期间按 checkpoint 机制保存 Graph 快照
     G->>LLM: chat 节点调用模型
     LLM-->>G: AI 回复
     G->>Repo: log 节点落库 assistant 消息
-    G->>CP: 保存 checkpoint
+    G->>CP: 保存执行快照
     G-->>RT: ConversationState
     RT-->>API: state
     API-->>C: conversation_id, answer
+    end
 ```
+
+<a id="agent-workflow"></a>
 
 ## 4. 目标 LangGraph 工作流（规划）
 
@@ -146,7 +162,8 @@ flowchart TB
 
     Route -->|knowledge| Retrieve["retrieve_knowledge<br/>向量 + BM25 + 重排"]
     Retrieve --> Gate{"confidence_check<br/>置信度闸"}
-    Gate --> Main
+    Gate -->|证据足够| Main
+    Gate -->|证据不足| Fallback["fallback_reply"] --> Log
 
     Route -->|refund_flow| Fetch["fetch_order"] --> Policy["retrieve_policy"] --> Main
     Route -->|business| Main["main_agent<br/>ReAct 工具循环"]
@@ -159,6 +176,8 @@ flowchart TB
     Script --> Log
     Log --> End((END))
 ```
+
+<a id="business-layers"></a>
 
 ## 5. Business Service 分层
 

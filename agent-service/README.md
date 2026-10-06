@@ -14,7 +14,26 @@ Python Agent Service 按对话编排、知识检索和工具调用等职责逐�
 
 Java 验证客户端 JWT/Session，Python 验证 Java 服务身份及受保护的用户上下文，并继续校验会话归属。Python 保有会话、消息、摘要、checkpoint、RAG 和飞轮，不向 Java 复制这些状态。普通用户只能通过 Java 产品入口访问；当前 Python 直连接口保留用于本地开发。
 
-## 计划结构
+## 架构与执行链路
+
+```mermaid
+flowchart TB
+    Entry["Java Gateway/BFF（E 阶段规划）"] -.->|内部 HTTP/SSE| API["FastAPI"]
+    Dev["本地调试客户端"] -->|HTTP JSON| API
+    API --> Runtime["run_turn"] --> Graph["chat → log"]
+    Runtime --> Repo["ConversationRepository"]
+    Graph --> Repo
+    Repo --> DB[("MySQL：会话和消息")]
+    Graph --> CP[("SQLite：Graph checkpoint")]
+    Graph --> LLM["模型 API"]
+    Graph -.-> Tools["工具 / gRPC Client（规划）"] -.-> Java["Java Business RPC"]
+```
+
+该图表示职责与正常生命周期下的接线方向，不代表端到端验收通过。当前 `/api/agent` 未注入仓储，Fake 模型测试路径跳过持久化初始化；仓储接线与测试适配仍在进行。
+
+详见 [当前拓扑](../docs/ARCHITECTURE.md#current-topology)、[请求时序](../docs/ARCHITECTURE.md#chat-sequence) 和 [目标工作流](../docs/ARCHITECTURE.md#agent-workflow)。
+
+### 计划目录
 
 ```text
 agent-service/
