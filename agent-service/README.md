@@ -8,6 +8,12 @@ Python Agent Service 按对话编排、知识检索和工具调用等职责逐�
 
 详细设计见：[Python Agent Service 规格书](docs/PYTHON_AGENT_SERVICE_SPEC.md)。
 
+## 目标入口与服务边界（E 阶段待实现）
+
+客户端 → Spring Boot entry（Gateway/BFF，与业务同一项目/进程）→ 内部 HTTP/SSE → Python Agent → gRPC → Java Business。
+
+Java 验证客户端 JWT/Session，Python 验证 Java 服务身份及受保护的用户上下文，并继续校验会话归属。Python 保有会话、消息、摘要、checkpoint、RAG 和飞轮，不向 Java 复制这些状态。普通用户只能通过 Java 产品入口访问；当前 Python 直连接口保留用于本地开发。
+
 ## 计划结构
 
 ```text

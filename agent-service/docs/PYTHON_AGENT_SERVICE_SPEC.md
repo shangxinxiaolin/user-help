@@ -46,6 +46,8 @@ Python Agent Service 是系统的对话编排层，负责理解用户问题、�
 
 调用关系：
 
+目标部署已确定为：客户端 → Spring Boot entry（Gateway/BFF 与业务同一项目/进程）→ 内部 HTTP/SSE → Python → gRPC → Java Business。E 阶段尚未实现；下图保留本地开发的直连方式，不是最终公网入口。Python 不负责客户端登录，负责验证 Java 服务及受保护用户上下文，并维护会话归属。
+
 ```text
 用户
   ↓ HTTP / SSE
@@ -304,7 +306,7 @@ message RequestContext {
 
 | 字段 | 来源 | 是否可信 |
 |---|---|---|
-| `user_id` | 目标：FastAPI 校验 JWT/Session 后的身份；目前仅由本地调试请求提供 | 当前未认证，不可信；目标阶段由系统注入，不能由模型填写 |
+| `user_id` | Java entry 验证客户端身份，Python 验证内部上下文后注入；目前由本地请求提供 | 当前未认证；目标须验证来源，模型不可填写 |
 | `conversation_id` | LangGraph 会话 ID | 由 Agent 状态注入 |
 | `trace_id` | 请求入口生成或透传 | 由系统生成或透传 |
 
@@ -493,13 +495,13 @@ Tool 层不应该：
 
 | 接口 | 访问范围 | 调用模型前必须完成的检查 |
 |---|---|---|
-| `POST /api/chat` | 已认证的前端用户 | 身份、会话归属、请求大小、用户频率/并发、剩余额度 |
+| `POST /api/chat` | Java entry 内部调用；前端经 Java 转发 | Java 服务/用户上下文、会话归属、请求大小、模型并发和预算 |
 | `POST /api/agent` | 内网或管理员 | 服务/管理员身份、会话归属、额度；网关不转发普通公网流量 |
-| `POST /api/actions/resume` | 已认证的原会话用户 | 身份与会话归属、幂等与并发控制 |
+| `POST /api/actions/resume` | Java 转发原会话用户请求 | 内部上下文与会话归属、幂等与并发控制 |
 | 管理/知识审核接口 | 管理员 | 管理员身份和操作权限 |
 | `GET /health` | 运维或网关 | 不调用模型，不暴露密钥/内部状态 |
 
-目标请求 Body 只包含消息及可选 `conversation_id`；不能从 Body 或未经校验的 `X-User-Id` 取得可信用户身份。FastAPI 验证 JWT/Session 后注入 `ConversationState.user_id`，并在继续旧会话或 resume 前核查 `conversations.user_id`。当前 Pydantic Schema 允许 `user_id` 是开发阶段临时契约；切换时同步更新 Schema、API 测试和客户端。
+客户端 Body 不携带可信身份，JWT/Session 由 Java entry 验证。Java 传递受保护、限时且限定接收方的用户上下文，Python 验证服务身份及上下文后注入 State，并在续聊/resume 前核查 conversations.user_id。裸 X-User-Id 不作为认证。具体内部协议、Schema 和客户端迁移在 E 阶段冻结；当前 Body user_id 仅为开发契约。
 
 所有入口的模型预算检查必须发生在 Graph/LLM 调用之前：
 
@@ -899,7 +901,7 @@ query_order Tool
 
 ### 阶段 7：公网接入与模型费用防护（需单独确认）
 
-- [ ] 实现 JWT/Session 身份提取与会话归属校验，移除 Body 中可自报的 `user_id`。
+- [ ] Java entry 验证客户端 JWT/Session；Python 验证内部服务/用户上下文并校验会话归属，移除 Body 自报身份。
 - [ ] 对普通用户关闭 `/api/agent` 与管理接口的公网路由。
 - [ ] 配置消息/请求体长度、模型输出 Token、单次超时和最大 Agent 步数。
 - [ ] 增加用户频率、用户/全局并发、活跃 SSE 连接及每日 Token 配额；多实例采用共享的原子计数。
@@ -951,7 +953,8 @@ query_order Tool
 - 普通业务 RPC 默认超时不超过 3 秒。
 - 只读 RPC 最多有限重试一次。
 - 写 RPC 不自动重试，依赖幂等键。
-- Agent 长连接仍由 Python 管理，不把 SSE 连接转移到 Java。
+- Graph 执行与内部流由 Python 管理；浏览器连接由 Java entry 管理和转发，双方释放各自资源。
+- Python 管理 Agent 执行及内部流；E 阶段 Java 同时持有浏览器 SSE 连接并转发 Python 流，双方各自释放连接/任务资源。不得将“Python 保有执行状态”误解为“Java 不接长连接”。
 
 ## 18. 当前限制
 

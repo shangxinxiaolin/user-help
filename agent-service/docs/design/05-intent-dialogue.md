@@ -35,13 +35,13 @@ def route_by_intent(state):
     return "business"
 ```
 
-| 出口 | 哪些意图 | 守的规矩 |
-|---|---|---|
-| knowledge | 商品咨询 | 强制检索 → 置信度闸 → Agent |
-| refund_flow | 退款退货/售后 | 取订单 → 检索政策 → 只判能不能退 |
-| business | 物流/订单/人工 | Agent 自己调工具 |
-| fallback_script | 闲聊/其他 | 固定话术，不进 Agent |
-| escalate | 投诉 | 安抚 + 转人工，不让模型接手 |
+| 出口            | 哪些意图       | 守的规矩                           |
+| --------------- | -------------- | ---------------------------------- |
+| knowledge       | 商品咨询       | 强制检索 → 置信度闸 → Agent      |
+| refund_flow     | 退款退货/售后  | 取订单 → 检索政策 → 只判能不能退 |
+| business        | 物流/订单/人工 | Agent 自己调工具                   |
+| fallback_script | 闲聊/其他      | 固定话术，不进 Agent               |
+| escalate        | 投诉           | 安抚 + 转人工，不让模型接手        |
 
 ## 关键结论与坑
 

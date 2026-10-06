@@ -4,6 +4,8 @@
 
 ## 一条请求的六站接力
 
+目标系统入口（E 阶段尚未实现）：客户端 → Spring Boot entry Gateway/BFF → 内部 HTTP/SSE → Python 六站编排；业务工具 → gRPC → 同一 Spring Boot 的业务模块。普通业务不经过 Agent。Java 验证登录身份，Python 验证内部上下文并维护会话；Java 转发不持有业务事务，Python 不回调 Agent 入口。当前本地开发仍直接请求 Python。
+
 ```text
 用户消息 → resolve_reference(指代消解) → classify_intent(意图识别)
   → route_by_intent 分流
