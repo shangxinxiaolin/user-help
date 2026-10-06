@@ -98,7 +98,7 @@ A 阶段目前只完成了基础代码骨架和部分单元测试。先完成 A 
 - **B 只读业务链**：Python 工具 → gRPC → Java 查询订单；生成 gRPC Stub，`query_order` 改调 Java `OrderService`。
 - **C 可靠退款**：确认状态 + Java 持久化退款与幂等。
 - **D 政策依据与评测**：小范围政策 RAG、引用与低置信度处理。
-- **E 统一产品入口**：经确认后增加 Java 鉴权与 Agent HTTP/SSE 转发。
+- **E 统一产品入口（目标已定、待实现）**：同一 Spring Boot 内新增 entry Gateway/BFF，与业务模块分层；Java → Python 内部 HTTP/SSE，Python → Java Business gRPC。客户端身份由 Java 验证，Python 验证内部上下文，不复制会话或 Graph 状态。具体实施以总规格 12.5 为准。
 
 各模块设计与选型理由见 `docs/design/`（01–10 篇）。要点：
 

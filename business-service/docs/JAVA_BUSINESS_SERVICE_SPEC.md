@@ -3,6 +3,7 @@
 版本：v2.0  
 状态：可实施草案  
 更新时间：2026-10-06
+更新时间：2026-10-06
 
 ## 1. 目标
 
@@ -11,6 +12,10 @@ Java Business Service 是 MewHelp 的业务服务。它由 Python Agent Service 
 本阶段使用 Mock 数据，目的是先跑通业务链路并学习微服务拆分。接口和包结构按照后续可替换为真实数据库的方式设计。
 
 ## 2. 服务边界
+
+目标部署已确定：同一 Spring Boot 项目/进程包含 entry（Gateway/BFF）与业务模块。客户端只访问 Java 产品入口；Java 验证 JWT/Session，并通过内部 HTTP/SSE 调用 Python Agent；Python 用 gRPC 回调 Java Business。E 阶段尚未实现，当前 HTTP 仍为本地业务调试接口。
+
+entry 规划为 security、agent、web、config 子包，负责客户端身份、公开路由、请求限流与 SSE 转发；普通业务直接调用同进程 Service。等待 Python 时不持有业务事务/数据库锁；Python 不能递归调用 Java Agent 入口。会话、消息、checkpoint 和知识仍由 Python 持有，不复制到 Java。
 
 ### Java 负责
 
@@ -23,11 +28,11 @@ Java Business Service 是 MewHelp 的业务服务。它由 Python Agent Service 
 
 ### Java 不负责
 
-- 用户长连接、SSE 或 WebSocket
+- Python Agent 执行与 Graph 状态；E 阶段 Java entry 会持有浏览器 SSE 连接并转发内部流
 - LLM 调用、LangChain、LangGraph
 - 意图识别、工具选择和自然语言生成
 - FAQ、Milvus 和知识飞轮
-- 前端页面
+- Agent/RAG 前端页面生成；可由独立静态部署提供，Java entry 负责 API 适配
 
 调用关系：
 
@@ -50,6 +55,7 @@ Java Business Service
 
 | 项目 | 选择 |
 |---|---|
+| Java | 开发基线 21；POM java.version=21 与 compiler source/target=17 并存，实际构建目标需单独统一和验证 |
 | Java | 开发基线 21；POM java.version=21 与 compiler source/target=17 并存，实际构建目标需单独统一和验证 |
 | Web 框架 | Spring Boot 3.2.0 |
 | RPC | gRPC 1.60.1 |
@@ -156,7 +162,7 @@ message RequestContext {
 
 约束：
 
-- 目标是由 Python 校验 JWT/Session 后注入 `user_id`，不能由模型填写；当前开发版 Python 请求可自报 `user_id`，因此这不是已实现的可信认证。
+- 目标是 Java entry 验证客户端 JWT/Session，Python 验证 Java 服务身份及受保护的用户上下文后注入 user_id；业务 gRPC 仍需验证来源与权限。当前自报 user_id 只是开发机制。
 - `conversation_id` 用于会话关联和幂等键生成。
 - `trace_id` 用于 Python 和 Java 日志关联。
 
@@ -281,6 +287,7 @@ mvn clean test
 mvn spring-boot:run
 ```
 
+注意：历史上中文路径曾导致 Windows Protobuf 插件失败；当前工作区是英文路径 `D:\mewhelp-user-help`。若换到中文目录出现路径编码问题，使用纯 ASCII 路径后构建。
 注意：历史上中文路径曾导致 Windows Protobuf 插件失败；当前工作区是英文路径 `D:\mewhelp-user-help`。若换到中文目录出现路径编码问题，使用纯 ASCII 路径后构建。
 
 ## 10. 测试要求
@@ -413,6 +420,8 @@ Java Business Service 采用“按业务模块逐步开发、每阶段验收后�
 
 ## 12. 后续实现顺序
 
+E 阶段在当前应用新建 `entry/{security,agent,web,config}`，实现认证、内部 Agent HTTP/SSE Client 与 SSE Relay；不立即拆独立网关，不要求 Java → Python 改为 gRPC。实施前冻结内部用户上下文签名/服务认证、超时、取消及配额 owner，验收浏览器断线和响应丢失场景。
+
 主顺序以仓库 `docs/SPEC.md` 12.6 为准。Java 侧子任务：
 
 1. 冻结实际 Proto 与业务错误码映射，核实 JDK/构建目标。
@@ -427,4 +436,5 @@ Java Business Service 采用“按业务模块逐步开发、每阶段验收后�
 - 工单、退款幂等数据只保存在 Java 进程内存中。
 - 当前 Java gRPC endpoint 已实现基本调用，但错误码仍需按契约细化。
 - 当前明文 gRPC 与 HTTP 调试路由没有服务间认证或可信用户身份，不能直接对公网开放。
+- Python 服务已在相邻 `agent-service/` 建立基础聊天与仓储，但仓储 HTTP 接线和 Java gRPC 联调尚未完成，不能宣称端到端客服完成。
 - Python 服务已在相邻 `agent-service/` 建立基础聊天与仓储，但仓储 HTTP 接线和 Java gRPC 联调尚未完成，不能宣称端到端客服完成。

@@ -46,6 +46,19 @@ lingxi-customer-service/
 
 ## 架构
 
+**目标架构已确定，E 阶段尚未实现**：Gateway/BFF 与业务模块同处一个 Spring Boot 项目和进程，Python 是内部 Agent 服务。
+
+```text
+客户端 → HTTPS → Spring Boot
+                  ├─ entry：认证鉴权、限流、产品路由、Agent SSE 转发
+                  ├─ 普通请求 → 业务 Service → Business DB
+                  └─ Agent 请求 → 内部 HTTP/SSE → Python Agent
+                                                  ├─ 会话 / Graph / RAG / checkpoint
+                                                  └─ gRPC → 同一 Spring Boot 的 Business RPC
+```
+
+当前开发仍直接请求 Python JSON 接口；SSE 和 Java Agent 转发待实现，Java HTTP 目前仅为业务调试。Java 入口不复制 Python 会话状态，调用 Agent 时不持有业务事务；Python 只回调 Business RPC，不回调 Agent 入口。下面是统一入口实施前的开发链路与能力规划：
+
 ```text
 用户
   │ HTTP / SSE
@@ -248,7 +261,7 @@ mvn test
 2. **B 只读业务链**：Python 工具 → gRPC → Java 查询订单。
 3. **C 可靠退款**：确认状态 + Java 持久化退款与幂等。
 4. **D 政策依据与评测**：小范围政策 RAG、引用与低置信度处理。
-5. **E 统一产品入口**：经确认后增加 Java 鉴权与 Agent HTTP/SSE 转发。
+5. **E 统一产品入口**：在当前 Spring Boot 内新增 entry Gateway/BFF，验证客户端身份并通过内部 HTTP/SSE 调 Python；Python 通过 gRPC 调业务。目标已确定，协议和实施另行验收。
 
 各模块的设计与选型理由见 `agent-service/docs/design/`（01–10 篇），总体架构与契约见 `docs/SPEC.md`。
 

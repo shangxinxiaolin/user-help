@@ -566,6 +566,18 @@ make cost-report --days=7
 
 ### 2.1 服务拆分方案
 
+**已确定的目标架构（E 阶段待实现）**：Gateway/BFF 与业务层放在同一个 Spring Boot 项目和进程，以模块隔离，不另建独立网关服务。当前仍直接访问 Python 开发接口，Java HTTP 为本地业务调试接口。
+
+```text
+客户端 → HTTPS → Spring Boot entry（Gateway/BFF）
+                    ├─ 普通请求 → 同进程业务 Service → Business DB
+                    └─ Agent 请求 → 内部 HTTP/SSE → Python Agent
+                                                      ├─ Agent DB / checkpoint / Milvus
+                                                      └─ gRPC → Spring Boot Business RPC
+```
+
+Java 验证客户端 JWT/Session；Python 验证 Java 服务身份与可验证的用户上下文。Java 不复制会话/Graph 状态，Python 不直接访问 Business DB。以下旧图仅为 E 阶段前开发拓扑和能力示意：
+
 ```text
 ┌──────────────────────────────────────────────────┐
 │              前端 / API Gateway                   │
@@ -682,6 +694,8 @@ topic_classifications
 
 **核心职责**：执行业务逻辑，校验权限，保证数据一致性。
 
+目标 Java 应用还通过 entry 模块承担认证鉴权、请求限流、公开路由管理与 Agent HTTP/SSE 转发，尚未实现。普通产品请求调用同进程业务 Service；Agent 工具通过 Business gRPC 复用相同 Service。
+
 | 能力 | 描述 |
 |---|---|
 | 订单查询 | 根据订单号查询订单状态、金额、商品、物流单号 |
@@ -697,6 +711,7 @@ topic_classifications
 
 ```text
 business-service/src/main/java/com/shangui/userhelp/
+├── entry/{security,agent,web,config}  # E 阶段规划，尚未创建
 ├── order/{api,domain,mapper,service}
 ├── logistics/{api,domain,mapper,service}
 ├── aftersales/{api,domain,mapper,service}
@@ -1192,12 +1207,12 @@ Agent Service
 对外部署目标：
 
 ```text
-API Gateway / 反向代理
+反向代理 → Spring Boot entry（同一业务应用内的 Gateway/BFF）
   ├─ TLS、IP 限流与请求体大小限制
   ├─ 仅转发允许对外开放的路由
   ↓
 Agent Service
-  ├─ 校验 JWT/Session 并提取 user_id，不信任请求 Body/Header 自报的身份
+  ├─ 验证 Java 服务身份及内部身份上下文并提取 user_id，不信任客户端自报身份
   ├─ 校验 conversation_id 属于当前用户
   ├─ 用户请求频率、并发及模型 Token 配额检查（调用模型之前）
   ├─ 保存在 State
@@ -1267,11 +1282,11 @@ public class OrderService {
 
 | 边界 | 责任 | 拒绝时机 |
 |---|---|---|
-| 网关/反向代理 | TLS、IP 限流、Body 上限；只放行公开路径 | 转发到 Agent 前 |
-| Python Agent | JWT/Session 认证、会话归属、用户限流/并发/日 Token 配额、输入和输出预算、LLM 超时、最大 ReAct 步数 | Graph/LLM 执行前及运行中 |
+| Java entry / 反向代理 | 客户端 JWT/Session、公开路由、TLS、请求限流、Body 上限、Agent SSE 转发 | 转发到 Agent 前 |
+| Python Agent | Java 服务与用户上下文验证、会话归属、模型并发及 Token 预算、LLM 超时、最大 ReAct 步数 | Graph/LLM 执行前及运行中 |
 | Java Business | 限制公网可达性、服务间认证、订单归属及业务规则、退款/工单幂等 | 业务读写前 |
 
-- `/api/chat`：经认证和配额检查后才对前端开放；限制单用户活跃 SSE 连接和全局模型并发。客户端断开时尽力取消正在进行的 Graph/LLM 任务，记录取消与实际用量，不能把取消视为已退回上游 Token。
+- `/api/chat`：E 阶段只允许 Java entry 内部转发，不直接向前端开放 Python 端口；Java 管理浏览器 SSE，Python 管理内部流与模型并发。断线时传播取消并释放各自资源，不能把取消视为业务撤销或上游 Token 退款。
 - `/api/agent`：包含完整 Agent 信息，目标为内部/管理员接口，不经公网普通用户路由。
 - `/api/actions/resume`：必须复核认证用户与会话归属；用户确认不能替代 Java 的最终业务校验。
 - 配额采用用户级持久/共享计数及原子占额（多实例时可用 Redis）；发起调用前检查，拿到实际 usage 后结算。并发槽位必须在正常完成、失败与取消时释放。限流时返回 429，且不启动模型调用。
@@ -1606,6 +1621,8 @@ Agent Service → Kafka → Knowledge Worker
 
 #### API Gateway
 
+由同一 Spring Boot 的 entry 模块承担 Gateway/BFF，尚未实现；不要求新建独立 Spring Cloud Gateway 服务，独立部署留待规模需要时评估。
+
 引入 API Gateway 统一处理：
 
 - 认证授权
@@ -1623,7 +1640,7 @@ Agent Service → Kafka → Knowledge Worker
 
 继续以灵犀客服为主项目，以 `D:\hello\Chiron-Agent` 为工程参考。目标是做成一条可演示、可解释、可测试的「订单查询 → 政策解释 → 用户确认 → 退款执行 → 结果查询」闭环，而不是复制 Chiron 的全部框架。
 
-本节补充现有分阶段计划。Java 前置入口、身份模型、数据库和公开接口变更仍须先确认；本节不自动批准这些变更，不改变当前 Python HTTP 入口与 Java gRPC 业务服务的调用关系。每个阶段完成后测试、讲解并等待确认，再进入下一阶段。
+本节补充分阶段计划。Java 同进程 Gateway/BFF + Business 的目标已确定，具体身份协议、数据库与公开路由变更在对应阶段实施前确认；当前 Python 开发入口不立即切换。每阶段测试并确认后推进。
 
 当前实现基线（静态代码阅读，未运行验证）：
 
@@ -1680,9 +1697,13 @@ Agent Service → Kafka → Knowledge Worker
 
 若后续引入长任务与事件回放，必须先定义任务 owner、事件序号、游标和取消语义，再选择 worker/outbox；当前阶段不为普通查订单先引入整套持久化任务平台。
 
-### 12.5 Java 前置入口的后续评估
+### 12.5 已确定的 Java 统一产品入口（E 阶段待实现）
 
-候选生产架构为：`客户端 → Java 产品入口 → Python Agent → gRPC → Java 业务服务`。Java 产品入口和业务服务初期可在同一 Spring Boot 应用中分层实现。
+目标确定为：`客户端 → Spring Boot entry → HTTP/SSE → Python Agent → gRPC → Spring Boot Business`。entry（Gateway/BFF）与业务模块位于同一项目/进程；不立即拆独立 Gateway，也不要求双向 gRPC。
+
+客户端 JWT/Session 由 Java 验证，内部用户上下文必须具备完整性保护、有效期及接收方约束，由 Python 验证后注入 State；具体协议在 E 实施前冻结。不能仅凭裸 X-User-Id 信任身份。
+
+entry 等待 Python 时不得持有业务事务、数据库连接或资源锁；Python 只能调 Business RPC，不得递归调 Agent 入口。两条 Transport 分别定义并发与超时，业务写超时仍是结果未知。Java 拥有用户及业务数据，Python 拥有会话、消息、摘要、checkpoint、知识和飞轮。
 
 实施前确认以下事项：
 
@@ -1710,7 +1731,7 @@ Chiron 提供参考实现而非可直接复制的标准：其 Transport 中 `Flu
 | B：只读业务链 | Python 工具 → gRPC → Java 查询订单 | 自然语言查询实际调用 Java；缺订单号时澄清；无权访问时拒绝；超时有明确结果；Fake gRPC 测试与至少一次跨服务联调 |
 | C：可靠退款 | 明确确认状态；Java 持久化退款与幂等 | 未确认不写；重复/并发确认只生成一笔；不同参数复用键报冲突；重启后仍可查结果；提交后响应丢失可用原键取得原结果 |
 | D：政策依据与评测 | 小范围政策 RAG、引用与低置信度处理 | 回答可追溯政策来源；无依据时降级；业务资格仍由 Java 判断；固定案例输出真实评测结果 |
-| E：统一产品入口 | 经确认后增加 Java 鉴权与 Agent HTTP/SSE 转发 | 身份不可由请求正文覆盖；事件及时到达；断线释放资源；传输错误与业务结果不混淆；不复制 Python 权威状态 |
+| E：统一产品入口 | 同一 Spring Boot 新增 entry Gateway/BFF、客户端鉴权与内部 Agent HTTP/SSE 转发 | 身份不可由正文覆盖；Python 验证内部上下文；事件及时到达；断线释放资源；不持有长事务；不复制 Python 状态 |
 
 阶段 C 涉及业务数据库与接口语义，阶段 E 涉及入口和身份架构，均须先确认设计再实施。优先完成 A–D 的核心闭环，不并行铺开全部业务和基础设施。
 

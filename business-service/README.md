@@ -240,12 +240,22 @@ A: 当前 Java 使用 Mock Mapper，没有数据源配置和数据库驱动。�
 
 ## 下一步
 
+**已确定的 E 阶段目标，尚未实现**：同一 Spring Boot 项目/进程内增加 entry 模块承担 Gateway/BFF，与现有业务层分包，不另起独立 Gateway 服务。
+
+```text
+客户端 → Java entry：JWT/Session、请求限流、产品接口
+                  ├─ 普通业务 → 同进程 Service
+                  └─ Agent → 内部 HTTP/SSE → Python → gRPC → Java Business RPC
+```
+
+规划包为 `entry/{security,agent,web,config}`。Java 转发时不持有业务事务或数据库锁；Python 回调仅进入 Business RPC。Java 与 Python 验证内部服务/用户上下文，身份不能由 Body 或裸 Header 覆盖。会话与 Graph 状态仍由 Python 唯一维护。现有 `/api/business/*` 调试接口不能自动当作已鉴权的产品接口。
+
 Mock 业务接口已实现（订单、物流、售后、退款、工单及幂等）。后续：
 
 1. 与 Python Agent Service 联调（B 阶段：Python 工具 → gRPC → Java 查询订单）。
 2. 退款/工单从进程内存持久化到 Business DB（C 阶段）。
 3. 接入 MyBatis + MySQL，替换 Mock Mapper。
-4. 服务治理与性能优化（后续阶段）。
+4. E 阶段实现 entry 鉴权与 Agent SSE 转发，验证超时、断线释放及内部身份边界；服务治理按需求推进。
 
 ## 相关文档
 
