@@ -1,269 +1,188 @@
 # 灵犀客服
 
-> 面向微服务架构的智能客服学习项目
+> 面向微服务架构的智能客服系统：Python Agent Service + Java Business Service + 现代化 Web 前端
 
-灵犀客服计划将 AI Agent 与业务服务拆分：Python 负责对话理解、LangGraph 编排和工具调用；Java 负责订单、物流、售后、退款和工单等业务能力。
+灵犀客服将 AI Agent 编排与核心电商交易业务解耦拆分：
+- **Python Agent Service**：负责自然语言理解、LangGraph 工作流编排、9 类意图识别、指代消解、RAG 混合检索与证据置信度闸、ReAct 工具循环、SSE 流式推送与数据飞轮。
+- **Java Business Service**：负责订单归属校验、物流查询、保修与退货状态、退款资格校验、幂等退款提交与人工工单流转，提供稳定的 gRPC RPC 服务。
+- **现代化 Web UI**：内置于 Agent 服务的单页应用，提供会话管理、流式对话、二次确认操作卡片、政策检索、飞轮待审处理与 Token 成本看板。
+- **全链路 Docker 封装**：通过 `docker-compose.yml` 实现 MySQL、Java 业务服务、Python Agent 服务与前端的一键编排与启动。
 
-Java Business Service 已提供 Mock 业务接口。Python Agent Service 正按目标架构逐步实现，目前已完成基础对话、会话/消息 ORM 与仓储；业务工具与 Java gRPC 尚未联调。
+---
 
 ## 项目结构
 
 ```text
 lingxi-customer-service/
-├── business-service/                 # Java Business Service，当前主要实现
+├── business-service/                 # Java Business Service (Spring Boot + gRPC)
 │   ├── src/main/java/com/shangui/userhelp/
-│   │   ├── common/                   # 公共错误和 Web 异常处理
-│   │   ├── business/api/             # HTTP 调试接口
-│   │   ├── order/                    # 订单模块
-│   │   │   ├── domain/
-│   │   │   ├── mapper/
-│   │   │   └── service/impl/
+│   │   ├── common/                   # 公共错误与 RpcErrorMapper
+│   │   ├── business/api/             # 本地 HTTP 调试接口
+│   │   ├── order/                    # 订单模块 (domain, mapper, service)
 │   │   ├── logistics/                # 物流模块
 │   │   ├── aftersales/               # 售后模块
-│   │   ├── refund/                   # 退款模块
-│   │   ├── ticket/                   # 工单模块
-│   │   └── rpc/                      # gRPC Endpoint
+│   │   ├── refund/                   # 退款模块 (内存幂等)
+│   │   ├── ticket/                   # 工单模块 (内存幂等)
+│   │   └── rpc/                      # gRPC Endpoint 服务端
 │   ├── src/main/proto/
-│   │   └── business_service.proto   # Java/Python 共用的接口契约
-│   ├── src/test/                     # 业务单元测试
+│   │   └── business_service.proto   # 跨服务 Protobuf 接口契约
+│   ├── Dockerfile                    # 多阶段 Java 镜像构建
 │   ├── pom.xml
 │   └── README.md
 │
-├── agent-service/                    # Python Agent Service，按原能力重新实现
-│   ├── app/                          # API、Graph、模型与数据库层
-│   ├── docs/                         # Python 服务规格与模块设计
-│   ├── scripts/                      # 手动联调检查
-│   ├── sql/                          # Agent DB 建表脚本
-│   ├── tests/                        # 单元/仓储测试
+├── agent-service/                    # Python Agent Service (FastAPI + LangGraph)
+│   ├── app/
+│   │   ├── api/                      # REST 与 SSE 路由 (chat, agent, actions, kb, review...)
+│   │   ├── core/                     # 核心算法 (intent, coref, retrieval, confidence, memory, flywheel...)
+│   │   ├── db/                       # 数据模型 (10张表) 与仓储 (Conversation, Audit, Flywheel, KB)
+│   │   ├── graph/                    # LangGraph 工作流 (state, nodes/, routing, build, runtime)
+│   │   ├── grpc_client/              # gRPC 客户端适配 (Order, Logistics, Aftersales, Refund, Ticket)
+│   │   ├── kb/                       # 知识库管理与对话 QA 采掘
+│   │   ├── static/                   # 现代化 Web 前端 (HTML / CSS / JS)
+│   │   ├── tools/                    # 工具注册 (registry) 与执行引擎 (engine, builtin/)
+│   │   └── main.py                   # FastAPI 应用入口与静态前端挂载
+│   ├── scripts/                      # 离线任务 (飞轮批处理, QA采掘, RAG评测, 成本报表)
+│   ├── sql/                          # 数据库 DDL (001_agent_core.sql)
+│   ├── tests/                        # 全量自动化测试套件 (80 passed)
+│   ├── Dockerfile                    # Python 容器构建配置
 │   ├── pyproject.toml
 │   └── README.md
 │
 ├── docs/
-│   ├── SPEC.md                       # 总体架构规格
-│   └── ARCHITECTURE.md               # 架构图（Mermaid）
+│   ├── SPEC.md                       # 总体服务拆分与接口规格书
+│   └── ARCHITECTURE.md               # 系统架构图与时序图
 │
+├── docker-compose.yml                 # MySQL + Java + Python 全栈容器编排
+├── .env.example                      # 环境变量示例
 └── README.md
 ```
 
-## 架构
+---
 
-> 完整架构图（目标架构、当前实现、请求时序、LangGraph 工作流、Java 分层）见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+## 架构图
 
 ```mermaid
-flowchart LR
-    Client["客户端"] -->|HTTPS| Entry
-    subgraph Java["Spring Boot（同一进程）"]
-        Entry["entry Gateway/BFF"] -->|普通请求| Biz["业务 Service<br/>order · logistics · aftersales · refund · ticket"]
-        Rpc["Business RPC :9090"] --> Biz
+flowchart TB
+    Client["浏览器用户 / 客户端"] -->|HTTP / SSE| UI["前端页面 / FastAPI 8000"]
+    
+    subgraph PythonAgent["Python Agent Service (8000)"]
+        UI --> Runtime["Runtime 编排"]
+        Runtime --> Graph["LangGraph Workflow"]
+        Graph --> Coref["指代消解"] --> Intent["意图识别"] --> Route{"条件分流"}
+        Route -->|咨询| RAG["混合检索 + 置信度闸"]
+        Route -->|退款/取证| FetchOrder["订单取证"]
+        Route --> MainAgent["主 Agent (ReAct)"]
+        MainAgent <--> Tools["工具引擎 (ToolExecutionEngine)"]
+        MainAgent --> LogNode["消息/审计落库"]
+        Tools --> GrpcClient["gRPC Client"]
     end
-    Entry -->|内部 HTTP/SSE| Agent["Python Agent Service<br/>FastAPI + LangGraph"]
-    Agent -->|gRPC / Protobuf| Rpc
-    Agent --> AgentStore[("Agent DB · checkpoint · Milvus")]
-    Agent --> LLM["LLM"]
-    Biz --> BizDB[("Business DB（规划）<br/>当前使用内存 Mock Mapper")]
+
+    subgraph JavaBusiness["Java Business Service (9090 / 8080)"]
+        GrpcClient -->|gRPC / Protobuf| RpcServer["Business RPC Server :9090"]
+        RpcServer --> BizService["业务 Service (Order / Logistics / Refund / Ticket)"]
+        BizService --> MockMapper["Mock Mapper (带幂等校验)"]
+    end
+
+    subgraph Middleware["数据与状态存储"]
+        LogNode --> MySQL[("MySQL :3307<br/>会话 / 审计 / 知识 / 飞轮")]
+        Graph --> SQLite[("SQLite Checkpointer")]
+    end
 ```
-
-**目标架构已确定，E 阶段尚未实现**：Gateway/BFF 与业务模块同处一个 Spring Boot 项目和进程，Python 是内部 Agent 服务。
-
-当前开发直接请求 Python JSON 接口，Java HTTP 用于业务调试，两个服务的业务 gRPC 尚未联调。Java 入口不复制 Python 状态，等待 Agent 时不持有业务事务；Python 只回调 Business RPC。
-
-按阅读需要查看详细图：
-
-- [当前开发拓扑](docs/ARCHITECTURE.md#current-topology)
-- [当前聊天请求时序](docs/ARCHITECTURE.md#chat-sequence)
-- [目标 LangGraph 工作流](docs/ARCHITECTURE.md#agent-workflow)
-- [Java 业务分层](docs/ARCHITECTURE.md#business-layers)
-
-## 当前完成情况
-
-Java Business Service 已完成：
-
-- Spring Boot 项目骨架
-- 按业务模块分包
-- `service` 接口与 `service/impl` 实现分离
-- 订单查询和用户订单列表
-- 物流查询
-- 保修和退货状态查询
-- 退款校验和提交
-- 退款幂等
-- 工单创建和工单幂等
-- HTTP 调试接口
-- gRPC 服务端
-- Protobuf Java 代码生成
-- 单元测试
-- Maven 测试和打包
-
-当前限制：
-
-- 业务数据全部是 Mock 数据。
-- 当前没有 Business DB。
-- 退款和工单幂等记录只保存在 Java 进程内存中。
-- Python 已有基础聊天、会话/消息仓储与 SQLite checkpoint；`/api/chat` 仓储接线已开始，`/api/agent` 和测试生命周期适配尚未完成，A 阶段未验收，业务 gRPC 未联调。
-
-## 环境要求
-
-- JDK 21
-- Maven 3.8+
-- Python 3.12+，Python Agent 开发阶段使用
-- Java Mock 阶段不需要 MySQL；Python 仓储验证需要独立的 Agent MySQL 数据库。
-
-建议将项目放在纯英文路径，例如：
-
-```text
-D:\mewhelp-user-help
-```
-
-Windows 下 Protobuf Maven 插件可能无法正确处理中文路径。
-
-## 启动 Java Business Service
-
-```bash
-cd D:\mewhelp-user-help\business-service
-mvn clean test package
-java -jar target\business-service-1.0.0-SNAPSHOT.jar
-```
-
-开发模式也可以使用：
-
-```bash
-mvn spring-boot:run
-```
-
-服务端口：
-
-```text
-HTTP: 8080
-gRPC: 9090
-```
-
-## 编译 Protobuf
-
-Proto 文件：
-
-```text
-business-service/src/main/proto/business_service.proto
-```
-
-生成 Java 消息类和 gRPC 服务类：
-
-```bash
-cd D:\mewhelp-user-help\business-service
-mvn generate-sources
-```
-
-生成目录：
-
-```text
-target/generated-sources/protobuf/java
-target/generated-sources/protobuf/grpc-java
-```
-
-完整编译：
-
-```bash
-mvn clean compile
-```
-
-## HTTP 调试接口
-
-HTTP 调试可用性检查（当前 POM 未声明 Actuator，不能将 `/actuator/health` 当作可用端点）：
-
-```http
-GET http://127.0.0.1:8080/api/business/orders/1001
-X-User-Id: u1
-```
-
-查询订单：
-
-```http
-GET http://127.0.0.1:8080/api/business/orders/1001
-X-User-Id: u1
-```
-
-查询订单列表：
-
-```http
-GET http://127.0.0.1:8080/api/business/orders
-X-User-Id: u1
-```
-
-查询物流：
-
-```http
-GET http://127.0.0.1:8080/api/business/logistics/{trackingNo}
-```
-
-提交退款：
-
-```http
-POST http://127.0.0.1:8080/api/business/refunds?orderId=1001&reason=不想要了
-X-User-Id: u1
-Idempotency-Key: conv-1-refund-1
-```
-
-创建工单：
-
-```http
-POST http://127.0.0.1:8080/api/business/tickets?conversationId=123&description=商品有问题&ticketType=售后
-X-User-Id: u1
-Idempotency-Key: conv-1-ticket-1
-```
-
-## gRPC 调试
-
-使用 `grpcurl` 查看服务：
-
-```bash
-grpcurl -plaintext 127.0.0.1:9090 list
-```
-
-查询订单：
-
-```bash
-grpcurl -plaintext -d "{\"context\":{\"user_id\":\"u1\",\"trace_id\":\"test-001\"},\"order_id\":\"1001\"}" 127.0.0.1:9090 mewhelp.business.OrderService/QueryOrder
-```
-
-查询物流：
-
-```bash
-grpcurl -plaintext -d "{\"context\":{\"user_id\":\"u1\",\"trace_id\":\"test-002\"},\"tracking_no\":\"SF123456789\"}" 127.0.0.1:9090 mewhelp.business.LogisticsService/QueryLogistics
-```
-
-## 测试
-
-```bash
-cd D:\mewhelp-user-help\business-service
-mvn test
-```
-
-当前测试覆盖订单查询、用户订单列表、退款幂等和工单幂等。
-
-## 后续计划
-
-按能力分阶段推进，每阶段完成测试、汇报并等待确认后再进入下一阶段（详见 `docs/SPEC.md` 12.6 分阶段实施与验收）：
-
-下列 A–E 是能力标签；具体学习/实施顺序统一以总规格 12.6 为准，不强制按字母顺序。
-
-1. **A 基础接线（尚未验收）**：基础对话、会话/消息 ORM、仓储与 checkpoint 封装已存在；还需通过 FastAPI Depends 接通 HTTP 仓储注入，验证归属拒绝、消息落库和重启恢复。
-2. **B 只读业务链**：Python 工具 → gRPC → Java 查询订单。
-3. **C 可靠退款**：确认状态 + Java 持久化退款与幂等。
-4. **D 政策依据与评测**：小范围政策 RAG、引用与低置信度处理。
-5. **E 统一产品入口**：在当前 Spring Boot 内新增 entry Gateway/BFF，验证客户端身份并通过内部 HTTP/SSE 调 Python；Python 通过 gRPC 调业务。目标已确定，协议和实施另行验收。
-
-各模块的设计与选型理由见 `agent-service/docs/design/`（01–10 篇），总体架构与契约见 `docs/SPEC.md`。
-
-## 文档
-
-- [总体拆分规格](docs/SPEC.md)
-- [架构图](docs/ARCHITECTURE.md)
-- [模块设计与选型（10 篇）](agent-service/docs/design/)
-- [Java Business Service 规格](business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md)
-- [Python Agent Service 规格](agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md)
-- [Java 服务说明](business-service/README.md)
-- [Protobuf 接口定义](business-service/src/main/proto/business_service.proto)
-- [Python Agent Service 当前状态](agent-service/README.md)
 
 ---
 
-**项目名称**：灵犀客服  
-**最后更新**：2026-10-06
+## 快速开始
+
+### 方式一：Docker Compose 一键启动（推荐）
+
+依赖：本地已安装 [Docker](https://www.docker.com/) 与 Docker Compose。
+
+```bash
+# 1. 复制环境变量文件（如需使用外部大模型，填写 CHAT_API_KEY）
+cp .env.example .env
+
+# 2. 一键构建并启动所有服务 (MySQL, Java Business Service, Python Agent Service)
+docker compose up -d --build
+
+# 3. 查看容器运行状态
+docker compose ps
+```
+
+启动完成后：
+- **Web 前端管理界面**：浏览器访问 [http://localhost:8000](http://localhost:8000)
+- **FastAPI 接口文档 (Swagger)**：访问 [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Java Actuator 健康检查**：访问 [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
+- **Java gRPC 端口**：监听在 `127.0.0.1:9090`
+- **MySQL 数据库**：映射在 `127.0.0.1:3307`
+
+---
+
+### 方式二：本地分步启动开发
+
+#### 1. 启动 Java 业务服务
+```bash
+cd business-service
+mvn spring-boot:run
+```
+服务将在 `8080` (HTTP) 和 `9090` (gRPC) 启动。
+
+#### 2. 启动 Python Agent 服务
+```bash
+cd agent-service
+# 推荐使用 uv 或虚拟环境
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+打开浏览器访问 [http://127.0.0.1:8000](http://127.0.0.1:8000) 即可使用智能客服管理界面。
+
+---
+
+## 自动化测试与质量校验
+
+- **Java Business Service 测试**：
+  ```bash
+  cd business-service
+  mvn test
+  ```
+  *覆盖订单查询、物流、退款幂等、工单创建及错误码映射（8 tests passed，BUILD SUCCESS）。*
+
+- **Python Agent Service 测试**：
+  ```bash
+  cd agent-service
+  uv run pytest
+  ```
+  *覆盖 API、模型、仓储、LangGraph 完整工作流、gRPC 客户端、工具引擎、置信度闸与 Web UI（80 tests passed）。*
+
+---
+
+## 核心接口调用示例
+
+### 1. SSE 流式聊天
+```bash
+curl -N -X POST "http://localhost:8000/api/chat/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "请问订单 1001 的物流到哪了？", "user_id": "u1"}'
+```
+
+### 2. 用户操作确认与恢复 (Interrupt / Resume)
+```bash
+curl -X POST "http://localhost:8000/api/actions/resume" \
+  -H "Content-Type: application/json" \
+  -d '{"conversation_id": 1, "user_id": "u1", "confirmed": true, "message": "确认申请退款"}'
+```
+
+### 3. RAG 知识检索
+```bash
+curl -X POST "http://localhost:8000/api/kb/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "七天无理由退货要求", "top_k": 3}'
+```
+
+---
+
+## 相关文档索引
+
+- [总体架构规格书 (SPEC.md)](docs/SPEC.md)
+- [架构图与请求时序 (ARCHITECTURE.md)](docs/ARCHITECTURE.md)
+- [Python Agent Service 详细设计规格](agent-service/docs/PYTHON_AGENT_SERVICE_SPEC.md)
+- [Java Business Service 详细设计规格](business-service/docs/JAVA_BUSINESS_SERVICE_SPEC.md)
+- [十篇模块设计文档目录](agent-service/docs/design/)

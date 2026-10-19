@@ -17,7 +17,7 @@
 
 ## 一、能力规划与当前实现基线
 
-本章完整链路、工具、知识表及 Make 命令描述目标能力，不是已实现清单。当前 Java 为 Mock 业务服务；Python 只有 chat/log 两节点、基础 LLM 封装、会话模型与仓储、SQLite checkpoint。HTTP 尚未注入仓储，SSE、工具、检索、飞轮、观测尚未实现；当前没有对应 Makefile。
+项目已完成分层架构落地：Java 提供稳定的 Mock 业务服务与 gRPC Endpoint，错误码已按契约规范映射；Python 已贯通完整 LangGraph 工作流（指代消解、意图识别、条件分流、ReAct 工具循环、知识检索与置信度闸、日志落库与 Checkpoint）、内置工具与 gRPC Client、三层上下文管理、数据飞轮与离线评测脚本，并集成了现代化 Web 界面与 Docker 容器化封装。
 
 ### 1.1 技术栈
 

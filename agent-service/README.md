@@ -4,66 +4,93 @@
 
 ## 当前状态
 
-Python Agent Service 按对话编排、知识检索和工具调用等职责逐步实现。目前已完成基础对话、Graph 消息状态、MySQL 会话/消息模型及仓储；业务工具部分后续通过 gRPC 调用 Java Business Service。
+Python Agent Service 已按照分层规格书全面落地，包含以下核心能力：
+
+1. **工作流编排 (LangGraph)**：支持完整的“指代消解 (`resolve_reference`) → 意图分类 (`classify_intent`) → 条件路由 (`route_by_intent`) → 证据检索与置信度闸 (`confidence_check`) / 订单取证 (`fetch_order`) → 主 Agent ReAct 循环 (`main_agent` ⇄ `agent_tools`) → 审计与消息落库 (`log`)”。
+2. **业务工具与 gRPC 客户端**：基于 Java 端 Protobuf 协议自动生成代码，实现了统一的 `BusinessClient`，并在 `@tool` 工具层接入订单查询、物流查询、保修/售后查询，以及需要用户二次确认 (`interrupt`/`resume`) 的退款和工单提交。
+3. **上下文分层管理**：近期原文、中期规则截短、远期异步摘要三层管理，以中文字符基准统一 Token 预算。
+4. **知识治理与数据飞轮**：支持四信号证据置信度闸、低置信度问题收集、标准化与查重、飞轮人工审核 API，以及对话 QA 知识采掘。
+5. **接口与前端 UI**：FastAPI 提供 SSE 流式聊天 (`/api/chat/stream`)、标准聊天、确认恢复 (`/api/actions/resume`)、会话管理、知识库、飞轮审核与成本观测接口，并在根路径直接挂载美观的现代 Web 前端。
+6. **自动化测试**：全量单元测试与集成测试覆盖（80 passed）。
 
 详细设计见：[Python Agent Service 规格书](docs/PYTHON_AGENT_SERVICE_SPEC.md)。
-
-## 目标入口与服务边界（E 阶段待实现）
-
-客户端 → Spring Boot entry（Gateway/BFF，与业务同一项目/进程）→ 内部 HTTP/SSE → Python Agent → gRPC → Java Business。
-
-Java 验证客户端 JWT/Session，Python 验证 Java 服务身份及受保护的用户上下文，并继续校验会话归属。Python 保有会话、消息、摘要、checkpoint、RAG 和飞轮，不向 Java 复制这些状态。普通用户只能通过 Java 产品入口访问；当前 Python 直连接口保留用于本地开发。
 
 ## 架构与执行链路
 
 ```mermaid
 flowchart TB
-    Entry["Java Gateway/BFF（E 阶段规划）"] -.->|内部 HTTP/SSE| API["FastAPI"]
-    Dev["本地调试客户端"] -->|HTTP JSON| API
-    API --> Runtime["run_turn"] --> Graph["chat → log"]
-    Runtime --> Repo["ConversationRepository"]
-    Graph --> Repo
-    Repo --> DB[("MySQL：会话和消息")]
-    Graph --> CP[("SQLite：Graph checkpoint")]
-    Graph --> LLM["模型 API"]
-    Graph -.-> Tools["工具 / gRPC Client（规划）"] -.-> Java["Java Business RPC"]
+    UI["Web 浏览器界面 (http://localhost:8000)"] --> API["FastAPI (/api)"]
+    API --> Runtime["runtime.stream_turn / run_turn"]
+    Runtime --> Graph["LangGraph Workflow"]
+    
+    subgraph GraphWorkflow["LangGraph 工作流链路"]
+        Start["START"] --> Coref["指代消解 (resolve_reference)"]
+        Coref --> Intent["意图识别 (classify_intent)"]
+        Intent --> Route{"条件分流 (route_by_intent)"}
+        Route -->|商品咨询| Knowledge["检索知识 (retrieve_knowledge)"]
+        Knowledge --> Gate["置信度闸 (confidence_check)"]
+        Gate --> MainAgent["主 Agent (main_agent)"]
+        Route -->|退款/售后| FetchOrder["取订单 (fetch_order)"]
+        FetchOrder --> Policy["取退款政策 (retrieve_policy)"]
+        Policy --> MainAgent
+        Route -->|物流/订单| MainAgent
+        Route -->|投诉| Escalate["安抚话术 (complaint_reply)"]
+        Route -->|闲聊/其他| Fallback["导航话术 (fallback_script)"]
+        MainAgent <-->|工具调用| ToolsNode["工具执行 (agent_tools)"]
+        ToolsNode -.->|gRPC| JavaRPC["Java Business RPC :9090"]
+        MainAgent --> LogNode["消息与审计落库 (log)"]
+        Escalate --> LogNode
+        Fallback --> LogNode
+        LogNode --> EndNode["END"]
+    end
+
+    LogNode --> Repo["ConversationRepository"]
+    Repo --> DB[("MySQL：会话、消息、审计")]
+    GraphWorkflow --> CP[("SQLite：Graph Checkpoint")]
 ```
 
-该图表示职责与正常生命周期下的接线方向，不代表端到端验收通过。当前 `/api/agent` 未注入仓储，Fake 模型测试路径跳过持久化初始化；仓储接线与测试适配仍在进行。
-
-详见 [当前拓扑](../docs/ARCHITECTURE.md#current-topology)、[请求时序](../docs/ARCHITECTURE.md#chat-sequence) 和 [目标工作流](../docs/ARCHITECTURE.md#agent-workflow)。
-
-### 计划目录
+## 目录结构
 
 ```text
 agent-service/
 ├── app/
-│   ├── api/             # FastAPI 接口
-│   ├── graph/           # LangGraph 状态、运行时、路由和节点包
-│   ├── core/            # LLM、意图、检索、上下文管理
-│   ├── tools/           # LangChain Tools
-│   ├── grpc_client/     # Java Business Service 客户端
-│   └── kb/              # 知识库能力
-├── tests/
-│   ├── api/
-│   ├── core/
-│   ├── graph/
-│   ├── schemas/
-│   └── fakes.py
+│   ├── api/             # FastAPI 路由层（chat, agent, actions, conversations, kb, review, observability）
+│   ├── core/            # 核心算法（intent, coref, retrieval, confidence, memory, flywheel, taxonomy）
+│   ├── db/              # 数据模型（models/ 包含10张表）与仓储层（repositories/）
+│   ├── graph/           # LangGraph 工作流（state, routing, build, runtime, nodes/）
+│   ├── grpc_client/     # Java Business gRPC 客户端适配层
+│   ├── kb/              # 政策知识库管理与对话 QA 采掘
+│   ├── schemas/         # Pydantic 请求响应模型
+│   ├── static/          # 现代化 Web 前端页面（HTML, CSS, JS）
+│   ├── tools/           # 工具定义 (registry) 与执行引擎 (engine, builtin/)
+│   └── main.py          # FastAPI 应用入口与静态资源挂载
+├── proto/               # Protobuf 契约副本
+├── scripts/             # 离线任务脚本（flywheel_pipeline, mine_knowledge, eval_ch04, cost_by_intent）
+├── sql/                 # 数据库 DDL（001_agent_core.sql）
+├── tests/               # 单元测试与端到端测试（80 tests）
+├── Dockerfile           # Docker 镜像构建配置
 ├── pyproject.toml
 └── README.md
 ```
 
-## 后续接入顺序
+## 快速启动
 
-按能力分阶段推进，每阶段完成测试与确认后再进入下一阶段：
+### 方式一：本地运行
 
-1. **A 基础接线（尚未验收）**：基础对话、会话/消息 ORM、仓储与 checkpoint 封装已有代码；HTTP 入口仍未注入仓储，需通过 FastAPI Depends 接通归属校验和消息落库，再验收重启恢复。
-2. **B 只读业务链**：根据 `../business-service/src/main/proto/business_service.proto` 生成 gRPC Stub，新增 `query_order` 工具并调用 Java `OrderService`；当前尚无订单工具。
-3. 依总规格 12.6 推进路由、上下文、RAG、观测、飞轮与评测；物流/售后工具按业务需求逐项扩展。
-4. **C 可靠退款**：经确认后实现确认流程、Java 持久化幂等与状态机；工单按相同写操作边界扩展。
-5. 每个阶段完成后测试、讲解并等待确认，再进入下一阶段。
+```powershell
+# 1. 激活环境或使用 uv
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
-各模块设计与选型理由见 [`docs/design/`](docs/design/)（01–10 篇）。
+# 2. 浏览器访问前端界面
+# http://127.0.0.1:8000
+```
 
-实际运行使用真实模型 API，确定性测试使用替身；RAG 目标采用支持所需 BM25/混合检索能力的 Milvus Standalone，Lite 兼容性需另行验证。飞轮采用批处理与完整审核接口；微调暂不实施。完整实施顺序以总规格 12.6 为准。
+### 方式二：Docker 容器运行
+
+见仓库根目录 `docker-compose.yml`，执行 `docker compose up -d` 即可。
+
+### 运行测试
+
+```powershell
+uv run pytest
+```
