@@ -4,7 +4,7 @@ services:
     container_name: lingxi-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       MYSQL_DATABASE: lingxi_agent
     ports:
       - "127.0.0.1:3307:3306"
@@ -12,7 +12,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./agent-service/sql/001_agent_core.sql:/docker-entrypoint-initdb.d/001_agent_core.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-123456}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,6 +22,7 @@ services:
     build:
       context: ./business-service
       dockerfile: Dockerfile
+    image: mewhelp-business-service:latest
     container_name: lingxi-business-service
     restart: unless-stopped
     ports:
@@ -32,6 +33,7 @@ services:
     build:
       context: ./agent-service
       dockerfile: Dockerfile
+    image: mewhelp-agent-service:latest
     container_name: lingxi-agent-service
     restart: unless-stopped
     depends_on:
@@ -42,7 +44,7 @@ services:
     environment:
       BUSINESS_GRPC_TARGET: business-service:9090
       BUSINESS_GRPC_TIMEOUT_SECONDS: "5.0"
-      DATABASE_URL: mysql+asyncmy://root:${MYSQL_ROOT_PASSWORD:-root123456}@mysql:3306/lingxi_agent
+      DATABASE_URL: mysql+asyncmy://root:${MYSQL_ROOT_PASSWORD:-123456}@mysql:3306/lingxi_agent
       CHECKPOINTER_DB_PATH: data/checkpoints.sqlite
       CHAT_API_KEY: ${CHAT_API_KEY:-}
       CHAT_MODEL: ${CHAT_MODEL:-gpt-4o-mini}
