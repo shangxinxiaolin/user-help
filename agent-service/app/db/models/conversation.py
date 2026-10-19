@@ -23,9 +23,10 @@ class Conversation(Base):
         index=True,
     )
     status: Mapped[str] = mapped_column(
-        Enum("进行中", "已转人工", "已结束"),
+        String(32),
         nullable=False,
         server_default="进行中",
+        default="进行中",
     )
     summary: Mapped[str | None] = mapped_column(
         Text,

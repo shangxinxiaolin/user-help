@@ -11,8 +11,7 @@ USE lingxi_agent;
 CREATE TABLE IF NOT EXISTS conversations (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id VARCHAR(64) NOT NULL,
-    status ENUM('进行中', '已转人工', '已结束')
-        NOT NULL DEFAULT '进行中',
+    status VARCHAR(32) NOT NULL DEFAULT '进行中',
     summary TEXT NULL,
     summary_upto_msg_id BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
