@@ -25,7 +25,10 @@ from app.db.repositories.conversation import ConversationRepository
 from app.db.repositories.flywheel import FlywheelRepository
 from app.db.repositories.kb import KnowledgeRepository
 from app.graph.build import build_graph
+from app.grpc_client.business_client import BusinessClient
+from app.grpc_client.channel import BusinessGrpcChannel
 from app.kb.store import default_kb_store
+from app.tools.engine import ToolExecutionEngine
 
 
 def create_app(
@@ -53,14 +56,40 @@ def create_app(
             flywheel_repo = FlywheelRepository(factory)
             kb_repo = KnowledgeRepository(factory)
 
+            channel = None
+            b_client = business_client
+            if b_client is None and getattr(settings, "business_grpc_target", None):
+                try:
+                    channel = BusinessGrpcChannel(
+                        target=settings.business_grpc_target,
+                        timeout=settings.business_grpc_timeout_seconds,
+                    )
+                    b_client = BusinessClient(channel)
+                except Exception:
+                    b_client = None
+
+            tool_engine = ToolExecutionEngine(
+                business_client=b_client,
+                audit_repository=audit_repo,
+            )
+
             app.state.conversation_repository = conv_repo
             app.state.audit_repository = audit_repo
             app.state.flywheel_repository = flywheel_repo
             app.state.knowledge_repository = kb_repo
-            app.state.business_client = business_client
+            app.state.business_client = b_client
+            app.state.tool_engine = tool_engine
 
             default_kb_store._repository = kb_repo
             await default_kb_store.initialize()
+
+            build_kwargs: dict[str, Any] = {}
+            import inspect
+            sig = inspect.signature(build_graph)
+            if "tool_engine" in sig.parameters:
+                build_kwargs["tool_engine"] = tool_engine
+            if "business_client" in sig.parameters:
+                build_kwargs["business_client"] = b_client
 
             async with open_checkpointer(
                 settings.checkpointer_db_path
@@ -69,9 +98,12 @@ def create_app(
                     model,
                     repository=conv_repo,
                     checkpointer=saver,
+                    **build_kwargs,
                 )
                 yield
         finally:
+            if channel is not None:
+                await channel.close()
             if owned_engine is not None:
                 await owned_engine.dispose()
 

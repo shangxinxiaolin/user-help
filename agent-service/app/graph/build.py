@@ -108,7 +108,8 @@ def build_graph(
         )
 
     graph = StateGraph(ConversationState)
-    graph.add_node("chat", make_chat_node(model))
+    engine = tool_engine or ToolExecutionEngine(business_client=business_client)
+    graph.add_node("chat", make_chat_node(model, tool_engine=engine))
     graph.add_node("log", make_log_node(repository))
 
     graph.add_edge(START, "chat")
