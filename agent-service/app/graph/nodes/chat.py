@@ -25,8 +25,18 @@ def make_chat_node(model: Any | None = None) -> ChatNode:
         if not isinstance(human_message.content, str):
             raise ValueError("HumanMessage content must be a string")
 
+        materials = []
+        if state.get("order_data"):
+            materials.append(f"【订单信息】：{state['order_data']}")
+        if state.get("evidence"):
+            materials.append(f"【参考政策证据】：\n{state['evidence']}")
+
+        augmented_message = human_message.content
+        if materials:
+            augmented_message += "\n\n" + "\n\n".join(materials)
+
         prompt_value = build_chat_prompt().invoke(
-            {"message": human_message.content}
+            {"message": augmented_message if materials else human_message.content}
         )
         chat_model = (
             model

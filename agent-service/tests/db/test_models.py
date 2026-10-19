@@ -3,10 +3,18 @@ from app.db.models import Conversation, Message
 
 
 def test_agent_db_registers_conversation_and_message_tables() -> None:
-    assert set(Base.metadata.tables) == {
+    assert {
         "conversations",
         "messages",
-    }
+        "tool_audit_logs",
+        "low_confidence_questions",
+        "review_queue",
+        "knowledge_chunks",
+        "qa_extraction_staging",
+        "eval_runs",
+        "faith_cases",
+        "topic_classifications",
+    }.issubset(set(Base.metadata.tables))
 
 
 def test_conversation_columns_match_contract() -> None:

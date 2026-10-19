@@ -1,5 +1,6 @@
 package com.shangui.userhelp.rpc;
 
+import com.shangui.userhelp.common.error.RpcErrorMapper;
 import com.shangui.userhelp.order.domain.Order;
 import com.shangui.userhelp.order.service.OrderService;
 import io.grpc.stub.StreamObserver;
@@ -26,7 +27,8 @@ public class OrderGrpcEndpoint extends OrderServiceGrpc.OrderServiceImplBase {
 
         } catch (RuntimeException exception) {
             observer.onNext(QueryOrderResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+                    .setErrorCode(RpcErrorMapper.mapOrderError(exception))
+                    .setMessage(exception.getMessage()).build());
             observer.onCompleted();
         }
     }
@@ -43,7 +45,7 @@ public class OrderGrpcEndpoint extends OrderServiceGrpc.OrderServiceImplBase {
             observer.onCompleted();
         } catch (RuntimeException exception) {
             observer.onNext(ListUserOrdersResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").build());
+                    .setErrorCode(RpcErrorMapper.mapOrderError(exception)).build());
             observer.onCompleted();
         }
     }

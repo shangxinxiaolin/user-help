@@ -50,6 +50,8 @@ class ConversationState(TypedDict, total=False):
     tokens_used: int
 
     suggested_actions: list
+    pending_action: dict
+    action_confirmed: bool
 
     trace: Annotated[
         dict,

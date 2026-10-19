@@ -1,5 +1,6 @@
 package com.shangui.userhelp.rpc;
 
+import com.shangui.userhelp.common.error.RpcErrorMapper;
 import com.shangui.userhelp.refund.domain.Refund;
 import com.shangui.userhelp.refund.service.RefundService;
 import io.grpc.stub.StreamObserver;
@@ -24,7 +25,8 @@ public class RefundGrpcEndpoint extends RefundServiceGrpc.RefundServiceImplBase 
                     .setReason(refundable ? "订单允许退款" : "当前订单状态不允许退款").build());
         } catch (RuntimeException exception) {
             observer.onNext(ValidateRefundResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+                    .setErrorCode(RpcErrorMapper.mapRefundError(exception))
+                    .setMessage(exception.getMessage()).build());
         }
         observer.onCompleted();
     }
@@ -38,7 +40,8 @@ public class RefundGrpcEndpoint extends RefundServiceGrpc.RefundServiceImplBase 
                     .setRefundId(refund.refundId()).build());
         } catch (RuntimeException exception) {
             observer.onNext(SubmitRefundResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+                    .setErrorCode(RpcErrorMapper.mapRefundError(exception))
+                    .setMessage(exception.getMessage()).build());
         }
         observer.onCompleted();
     }

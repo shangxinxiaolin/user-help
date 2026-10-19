@@ -1,5 +1,6 @@
 package com.shangui.userhelp.rpc;
 
+import com.shangui.userhelp.common.error.RpcErrorMapper;
 import com.shangui.userhelp.ticket.domain.Ticket;
 import com.shangui.userhelp.ticket.service.TicketService;
 import io.grpc.stub.StreamObserver;
@@ -24,7 +25,8 @@ public class TicketGrpcEndpoint extends TicketServiceGrpc.TicketServiceImplBase 
                     .setTicketNo(ticket.ticketNo()).build());
         } catch (RuntimeException exception) {
             observer.onNext(CreateTicketResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+                    .setErrorCode(RpcErrorMapper.mapTicketError(exception))
+                    .setMessage(exception.getMessage()).build());
         }
         observer.onCompleted();
     }
