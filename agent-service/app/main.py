@@ -1,25 +1,37 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.dependencies import get_conversation_repository
+from app.api.actions import create_actions_router
 from app.api.agent import create_agent_router
+from app.api.chat import create_chat_router
+from app.api.conversations import create_conversations_router
+from app.api.feedback import create_feedback_router
+from app.api.kb import create_kb_router
+from app.api.observability import create_observability_router
+from app.api.review import create_review_router
 from app.core.config import get_settings
 from app.db.base import create_engine
 from app.db.checkpointer import open_checkpointer
-from app.db.repositories import ConversationRepository
-from app.graph.answer import resolve_answer
+from app.db.repositories.audit import ToolAuditRepository
+from app.db.repositories.conversation import ConversationRepository
+from app.db.repositories.flywheel import FlywheelRepository
+from app.db.repositories.kb import KnowledgeRepository
 from app.graph.build import build_graph
-from app.graph.runtime import ConversationNotFound, run_turn
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.kb.store import default_kb_store
 
 
 def create_app(
     model: Any | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    full_workflow: bool = False,
+    business_client: Any | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -35,15 +47,26 @@ def create_app(
                     expire_on_commit=False,
                 )
 
-            repository = ConversationRepository(factory)
-            app.state.conversation_repository = repository
+            conv_repo = ConversationRepository(factory)
+            audit_repo = ToolAuditRepository(factory)
+            flywheel_repo = FlywheelRepository(factory)
+            kb_repo = KnowledgeRepository(factory)
+
+            app.state.conversation_repository = conv_repo
+            app.state.audit_repository = audit_repo
+            app.state.flywheel_repository = flywheel_repo
+            app.state.knowledge_repository = kb_repo
+            app.state.business_client = business_client
+
+            default_kb_store._repository = kb_repo
+            await default_kb_store.initialize()
 
             async with open_checkpointer(
                 settings.checkpointer_db_path
             ) as saver:
                 app.state.graph = build_graph(
                     model,
-                    repository=repository,
+                    repository=conv_repo,
                     checkpointer=saver,
                 )
                 yield
@@ -57,45 +80,30 @@ def create_app(
         lifespan=lifespan,
     )
 
-    app.include_router(
-        create_agent_router()
-    )
+    # Initialize default graph and state for tests before lifespan
+    app.state.graph = build_graph(model)
+
+    # Include all modular routers
+    app.include_router(create_chat_router())
+    app.include_router(create_agent_router())
+    app.include_router(create_actions_router())
+    app.include_router(create_conversations_router())
+    app.include_router(create_feedback_router())
+    app.include_router(create_kb_router())
+    app.include_router(create_review_router())
+    app.include_router(create_observability_router())
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/api/chat", response_model=ChatResponse)
-    async def chat(
-        request: ChatRequest,
-        repository: ConversationRepository = Depends(
-            get_conversation_repository
-        ),
-    ) -> ChatResponse:
-        if request.user_id is None or not request.user_id.strip():
-            raise HTTPException(
-                status_code=422,
-                detail="user_id is required",
-            )
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static_assets")
 
-        try:
-            state = await run_turn(
-                graph=app.state.graph,
-                message=request.message,
-                conversation_id=request.conversation_id,
-                user_id=request.user_id,
-                repository=repository,
-            )
-        except ConversationNotFound as exc:
-            raise HTTPException(
-                status_code=404,
-                detail="会话不存在或不可访问",
-            ) from exc
-
-        return ChatResponse(
-            conversation_id=state.get("conversation_id"),
-            answer=resolve_answer(state),
-        )
+        @app.get("/", include_in_schema=False)
+        async def root():
+            return FileResponse(str(static_dir / "index.html"))
 
     return app
 

@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     )
     checkpointer_db_path: str = "data/checkpoints.sqlite"
 
+    business_grpc_target: str = "127.0.0.1:9090"
+    business_grpc_timeout_seconds: float = 3.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

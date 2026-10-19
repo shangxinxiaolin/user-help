@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>灵犀智能客服系统 | MewHelp</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-icon">✨</div>
+        <div class="brand-text">
+          <h2>灵犀客服</h2>
+          <span class="badge-sub">MewHelp AI Agent</span>
+        </div>
+      </div>
+
+      <div class="user-selector-card">
+        <label for="current-user-input">当前用户 (user_id)</label>
+        <div class="input-with-button">
+          <input type="text" id="current-user-input" value="u1" placeholder="输入用户ID">
+        </div>
+        <small class="hint-text">默认测试账号: <code>u1</code> (演示订单: 1001)</small>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="tab-chat">
+          <span class="icon">💬</span>
+          <span>智能对话</span>
+        </button>
+        <button class="nav-item" data-tab="tab-kb">
+          <span class="icon">📚</span>
+          <span>政策知识库</span>
+        </button>
+        <button class="nav-item" data-tab="tab-review">
+          <span class="icon">🔄</span>
+          <span>飞轮待审队列</span>
+          <span class="nav-badge" id="review-count-badge">0</span>
+        </button>
+        <button class="nav-item" data-tab="tab-observability">
+          <span class="icon">📊</span>
+          <span>成本与观测</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="service-status">
+          <span class="status-dot online"></span>
+          <span>Java RPC :9090 · Agent :8000</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- TAB 1: 智能对话 -->
+      <section id="tab-chat" class="tab-pane active">
+        <div class="chat-wrapper">
+          <!-- Conversation History List Column -->
+          <div class="conversation-sidebar">
+            <div class="conv-header">
+              <h3>历史会话</h3>
+              <button id="btn-new-chat" class="btn-primary-sm">+ 新会话</button>
+            </div>
+            <div id="conversation-list" class="conv-list">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Active Chat Area -->
+          <div class="chat-container">
+            <header class="chat-header">
+              <div class="chat-header-info">
+                <span class="chat-title" id="active-chat-title">会话 #新会话</span>
+                <span class="intent-tag" id="active-intent-tag" style="display: none;">意图: 未知</span>
+              </div>
+              <div class="chat-header-actions">
+                <button id="btn-clear-chat" class="btn-outline-sm">清屏</button>
+              </div>
+            </header>
+
+            <div id="messages-container" class="messages-container">
+              <!-- Default Welcome Message -->
+              <div class="message assistant">
+                <div class="avatar">🤖</div>
+                <div class="bubble">
+                  <div class="content">
+                    您好！我是<strong>灵犀智能客服助手</strong>。我可以帮您：<br>
+                    • 查询订单状态、配送轨迹与物流信息<br>
+                    • 咨询商城政策（七天无理由退货、运费规则、保修时效）<br>
+                    • 申请订单退款或创建人工服务工单<br>
+                    请随时向我提问！
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Suggestions -->
+            <div class="quick-suggestions">
+              <span class="quick-chip" data-text="请帮我查询订单 1001 的物流到哪了？">📦 查订单 1001 物流</span>
+              <span class="quick-chip" data-text="我要申请退款订单 1001，请问可以退吗？">💸 申请退订单 1001</span>
+              <span class="quick-chip" data-text="你们商城的运费怎么计算？">🚚 运费怎么算</span>
+              <span class="quick-chip" data-text="商品支持保修多久？">🛡️ 保修期多久</span>
+              <span class="quick-chip" data-text="人工客服，我要投诉态度太差了">👤 转人工投诉</span>
+            </div>
+
+            <!-- Chat Input Area -->
+            <footer class="chat-input-area">
+              <textarea id="chat-input" placeholder="输入您的问题... (按 Enter 发送，Shift + Enter 换行)" rows="1"></textarea>
+              <button id="btn-send" class="btn-send">
+                <span>发送</span>
+                <span class="send-icon">➤</span>
+              </button>
+            </footer>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: 政策知识库 -->
+      <section id="tab-kb" class="tab-pane">
+        <div class="content-header">
+          <div>
+            <h2>知识库与政策库 (RAG)</h2>
+            <p>基于混合检索 (BM25 + 向量 + RRF) 与置信度闸的商城服务政策</p>
+          </div>
+          <button id="btn-open-add-chunk" class="btn-primary">+ 新增知识块</button>
+        </div>
+
+        <div class="search-filter-bar">
+          <input type="text" id="kb-search-input" placeholder="输入问题或关键词搜索政策知识 (例如: 7天退货、偏远地区运费)...">
+          <button id="btn-search-kb" class="btn-primary-sm">混合检索</button>
+        </div>
+
+        <div id="kb-chunks-list" class="cards-grid">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Add Chunk Modal -->
+        <div id="modal-add-chunk" class="modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>新增政策知识块</h3>
+              <button class="modal-close">&times;</button>
+            </div>
+            <form id="form-add-chunk">
+              <div class="form-group">
+                <label>标题</label>
+                <input type="text" id="chunk-title" required placeholder="例如: 偏远地区包邮政策">
+              </div>
+              <div class="form-group">
+                <label>分类</label>
+                <select id="chunk-category">
+                  <option value="退换货">退换货</option>
+                  <option value="物流">物流</option>
+                  <option value="售后">售后</option>
+                  <option value="发票">发票</option>
+                  <option value="通用">通用</option>
+                </select>
+              </div>
+              <div class="form-group checkbox-group">
+                <label>
+                  <input type="checkbox" id="chunk-is-key"> 设为关键条款 (命中关键条款享受置信度加权)
+                </label>
+              </div>
+              <div class="form-group">
+                <label>内容</label>
+                <textarea id="chunk-content" rows="4" required placeholder="输入详细政策条款说明..."></textarea>
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn-outline modal-close">取消</button>
+                <button type="submit" class="btn-primary">保存入库</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: 飞轮待审队列 -->
+      <section id="tab-review" class="tab-pane">
+        <div class="content-header">
+          <div>
+            <h2>知识数据飞轮待审队列</h2>
+            <p>来自证据置信度低与用户未解决反馈的问题池，经标准化归并后的待审核词条</p>
+          </div>
+        </div>
+
+        <div class="review-table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>标准化问题</th>
+                <th>提问频次</th>
+                <th>AI 建议答复</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="review-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 4: 成本与观测 -->
+      <section id="tab-observability" class="tab-pane">
+        <div class="content-header">
+          <div>
+            <h2>系统可观测性与成本看板</h2>
+            <p>基于会话、模型调用与意图维度的 Token 消耗与成本分析</p>
+          </div>
+          <button id="btn-refresh-metrics" class="btn-outline-sm">刷新数据</button>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">总对话轮次</span>
+            <span class="metric-value" id="metric-turns">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">模型调用次数</span>
+            <span class="metric-value" id="metric-calls">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">总消耗 Token</span>
+            <span class="metric-value" id="metric-tokens">0</span>
+          </div>
+          <div class="metric-card highlight">
+            <span class="metric-label">预估调用成本</span>
+            <span class="metric-value" id="metric-cost">$0.0000</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">中断确认率 (人工安全闸)</span>
+            <span class="metric-value" id="metric-interrupt">0.0%</span>
+          </div>
+        </div>
+
+        <!-- Intent Breakdown Table -->
+        <div class="content-section-card">
+          <h3>按业务意图划分的模型调用与成本明细</h3>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>业务意图</th>
+                <th>调用次数</th>
+                <th>Input Tokens</th>
+                <th>Output Tokens</th>
+                <th>总成本 (USD)</th>
+              </tr>
+            </thead>
+            <tbody id="cost-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

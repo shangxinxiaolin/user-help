@@ -73,3 +73,39 @@ class ConversationRepository:
                 .order_by(Message.id)
             )
             return list(result.scalars())
+
+    async def list_conversations_for_user(
+        self,
+        user_id: str,
+    ) -> list[Conversation]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Conversation)
+                .where(Conversation.user_id == user_id)
+                .order_by(Conversation.id.desc())
+            )
+            return list(result.scalars())
+
+    async def update_summary(
+        self,
+        conversation_id: int,
+        summary: str,
+        summary_upto_msg_id: int,
+    ) -> None:
+        async with self._session_factory() as session:
+            conv = await session.get(Conversation, conversation_id)
+            if conv is not None:
+                conv.summary = summary
+                conv.summary_upto_msg_id = summary_upto_msg_id
+                await session.commit()
+
+    async def update_status(
+        self,
+        conversation_id: int,
+        status: str,
+    ) -> None:
+        async with self._session_factory() as session:
+            conv = await session.get(Conversation, conversation_id)
+            if conv is not None:
+                conv.status = status
+                await session.commit()

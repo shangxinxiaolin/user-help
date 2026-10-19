@@ -1,8 +1,7 @@
 package com.shangui.userhelp.rpc;
 
-import com.shangui.userhelp.aftersales.domain.ReturnInfo;
-import com.shangui.userhelp.aftersales.domain.WarrantyInfo;
 import com.shangui.userhelp.aftersales.service.AftersalesService;
+import com.shangui.userhelp.common.error.RpcErrorMapper;
 import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 
@@ -19,21 +18,13 @@ public class AftersalesGrpcEndpoint extends AftersalesServiceGrpc.AftersalesServ
     @Override
     public void queryWarranty(QueryWarrantyRequest request, StreamObserver<QueryWarrantyResponse> observer) {
         try {
-            WarrantyInfo info = aftersalesService.queryWarranty(request.getOrderId());
-
-
+            var info = aftersalesService.queryWarranty(request.getOrderId());
             observer.onNext(QueryWarrantyResponse.newBuilder().setSuccess(true).setMessage("success")
-                            .setInfo(
-                                    com.shangui.userhelp.rpc.WarrantyInfo.newBuilder().setOrderId(info.orderId())
-                                    .setWarrantyStatus(info.warrantyStatus())
-                                    .setWarrantyUntil(info.warrantyUntil()).build()).build()
-            );
-
-
+                    .setInfo(toProto(info)).build());
         } catch (RuntimeException exception) {
-
-                    observer.onNext(QueryWarrantyResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+            observer.onNext(QueryWarrantyResponse.newBuilder().setSuccess(false)
+                    .setErrorCode(RpcErrorMapper.mapGenericError(exception))
+                    .setMessage(exception.getMessage()).build());
         }
         observer.onCompleted();
     }
@@ -44,18 +35,30 @@ public class AftersalesGrpcEndpoint extends AftersalesServiceGrpc.AftersalesServ
             StreamObserver<QueryReturnStatusResponse> observer
     ) {
         try {
-            ReturnInfo info = aftersalesService.queryReturnStatus(request.getOrderId());
-
+            var info = aftersalesService.queryReturnStatus(request.getOrderId());
             observer.onNext(QueryReturnStatusResponse.newBuilder().setSuccess(true).setMessage("success")
-                    .setInfo(com.shangui.userhelp.rpc.ReturnInfo.newBuilder()
-                            .setOrderId(info.orderId()).setReturnStatus(info.returnStatus())
-                            .setUpdatedAt(info.updatedAt()).build()).build());
-
+                    .setInfo(toProto(info)).build());
         } catch (RuntimeException exception) {
-
             observer.onNext(QueryReturnStatusResponse.newBuilder().setSuccess(false)
-                    .setErrorCode("BUSINESS_ERROR").setMessage(exception.getMessage()).build());
+                    .setErrorCode(RpcErrorMapper.mapGenericError(exception))
+                    .setMessage(exception.getMessage()).build());
         }
         observer.onCompleted();
+    }
+
+    private WarrantyInfo toProto(com.shangui.userhelp.aftersales.domain.WarrantyInfo info) {
+        return WarrantyInfo.newBuilder()
+                .setOrderId(info.orderId())
+                .setWarrantyStatus(info.warrantyStatus())
+                .setWarrantyUntil(info.warrantyUntil())
+                .build();
+    }
+
+    private ReturnInfo toProto(com.shangui.userhelp.aftersales.domain.ReturnInfo info) {
+        return ReturnInfo.newBuilder()
+                .setOrderId(info.orderId())
+                .setReturnStatus(info.returnStatus())
+                .setUpdatedAt(info.updatedAt())
+                .build();
     }
 }

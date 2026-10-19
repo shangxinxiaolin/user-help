@@ -30,3 +30,6 @@ def get_chat_model(
         kwargs["base_url"] = settings.chat_base_url
 
     return ChatOpenAI(**kwargs)
+
+
+create_chat_model = get_chat_model
